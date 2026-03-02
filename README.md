@@ -41,6 +41,38 @@ DEFAULT_THEME=nord PORT=8080 node src/index.js
 
 ---
 
+## Docker
+
+```bash
+docker build -t chess-stats .
+docker run -p 3000:3000 chess-stats
+```
+
+With environment variables:
+
+```bash
+docker run -p 3000:3000 -e DEFAULT_THEME=nord -e PORT=3000 chess-stats
+```
+
+Or with Docker Compose — create a `compose.yaml`:
+
+```yaml
+services:
+  chess-stats:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DEFAULT_THEME=dark
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+```
+
+---
+
 ## Endpoints
 
 ### `GET /stats/:platform/:username`
