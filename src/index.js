@@ -220,7 +220,6 @@ app.get("/", (_req, res) => {
     ],
   });
 });
-
 app.listen(PORT, () => {
   console.log(`Chess stats API listening on port ${PORT}`);
 });

@@ -9,8 +9,8 @@ const MODE_COLORS_FALLBACK = {
 };
 
 const W = 600;
-const H = 290;
-const PAD = { top: 58, right: 30, bottom: 50, left: 58 };
+const H = 250;
+const PAD = { top: 58, right: 30, bottom: 40, left: 58 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
