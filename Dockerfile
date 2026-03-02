@@ -1,10 +1,10 @@
-FROM node:18-alpine
+FROM oven/bun:1-alpine
 
 WORKDIR /app
 
 # Install production dependencies only
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+COPY package.json ./
+RUN bun install --production
 
 COPY src/ ./src/
 
@@ -12,4 +12,4 @@ EXPOSE 3000
 
 ENV NODE_ENV=production
 
-CMD ["node", "src/index.js"]
+CMD ["bun", "src/index.js"]
