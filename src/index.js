@@ -7,6 +7,7 @@ const {
 } = require("./providers/history");
 const { renderCard } = require("./render/card");
 const { renderChart } = require("./render/chart");
+const { renderCombined } = require("./render/combined");
 const { resolveTheme, THEMES } = require("./render/themes");
 
 const app = express();
@@ -187,6 +188,91 @@ app.get("/history/:platform/:username", async (req, res) => {
   }
 });
 
+/**
+ * GET /combined/chessdotcom/:username
+ * GET /combined/lichess/:username
+ *
+ * Returns a single unified SVG card: stats + inline mini chart.
+ * Optional query params:
+ *   ?mode=blitz                   single mode (default)
+ *   ?mode=bullet,blitz,rapid      comma-separated for multi-mode overlay (max 4)
+ *   ?months=6                     months of history (1-12)
+ *   ?theme=dark                   theme name
+ */
+app.get("/combined/:platform/:username", async (req, res) => {
+  const { platform, username } = req.params;
+
+  const rawMode = req.query.mode ?? "blitz";
+  const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
+    .flatMap((m) => m.split(","))
+    .map((m) => m.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const months = Math.min(12, Math.max(1, parseInt(req.query.months, 10) || 6));
+  const theme = req.query.theme ?? DEFAULT_THEME;
+
+  const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
+  const HISTORY_TTL = 15 * 60 * 1000;
+
+  try {
+    // Stats + all mode histories in parallel
+    const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
+    let stats = getCached(statsCacheKey);
+    const statsPromise = stats
+      ? Promise.resolve(stats)
+      : (async () => {
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            stats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            stats = await fetchLichess(username);
+          } else {
+            const err = new Error(
+              `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+            );
+            err.status = 400;
+            throw err;
+          }
+          setCache(statsCacheKey, stats);
+          return stats;
+        })();
+
+    const historyPromises = modes.map(async (mode) => {
+      const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
+      let result = getCached(key);
+      if (!result) {
+        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+          result = await fetchChessDotComHistory(username, mode, months);
+        } else if (normalized === "lichess") {
+          result = await fetchLichessHistory(username, mode, months);
+        }
+        cache.set(key, { data: result, expires: Date.now() + HISTORY_TTL });
+      }
+      return result;
+    });
+
+    const [resolvedStats, ...historySeries] = await Promise.all([
+      statsPromise,
+      ...historyPromises,
+    ]);
+
+    const svg = renderCombined(resolvedStats, historySeries, theme);
+    res
+      .set("Content-Type", "image/svg+xml")
+      .set("Cache-Control", `public, max-age=${HISTORY_TTL / 1000}`)
+      .send(svg);
+  } catch (err) {
+    const status = err.status ?? 500;
+    const { colors: ec } = resolveTheme(theme);
+    const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="80" viewBox="0 0 480 80">
+      <rect width="480" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
+      <text x="20" y="30" fill="${ec.loss}" font-size="13" font-family="monospace" font-weight="bold">Error</text>
+      <text x="20" y="52" fill="${ec.muted}" font-size="11" font-family="monospace">${err.message.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
+    </svg>`;
+    res.status(status).set("Content-Type", "image/svg+xml").send(errorSvg);
+  }
+});
+
 // Health check
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
@@ -201,6 +287,10 @@ app.get("/", (_req, res) => {
       eloChart: [
         "GET /history/chessdotcom/:username",
         "GET /history/lichess/:username",
+      ],
+      combined: [
+        "GET /combined/chessdotcom/:username",
+        "GET /combined/lichess/:username",
       ],
     },
     options: {
@@ -217,6 +307,9 @@ app.get("/", (_req, res) => {
       "/history/lichess/DrNykterstein?mode=bullet&months=3&theme=dracula",
       "/history/chessdotcom/hikaru?mode=blitz&months=6&theme=light",
       "/history/chessdotcom/hikaru?mode=bullet,blitz,rapid&months=6",
+      "/combined/lichess/DrNykterstein?mode=bullet&months=3&theme=dracula",
+      "/combined/chessdotcom/hikaru?mode=blitz&theme=nord",
+      "/combined/chessdotcom/hikaru?mode=bullet,blitz,rapid&months=6",
     ],
   });
 });
