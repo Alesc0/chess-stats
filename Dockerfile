@@ -1,5 +1,8 @@
 FROM oven/bun:1-alpine
 
+ARG VERSION
+LABEL version="${VERSION}"
+
 WORKDIR /app
 
 # Install production dependencies only
