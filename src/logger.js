@@ -1,6 +1,15 @@
+const fs = require("fs");
+const path = require("path");
 const pino = require("pino");
 
 const LOG_FILE = process.env.LOG_FILE ?? "logs/chess-stats.log";
+
+// Ensure the log directory and file exist
+const logDir = path.dirname(LOG_FILE);
+fs.mkdirSync(logDir, { recursive: true });
+if (!fs.existsSync(LOG_FILE)) {
+  fs.writeFileSync(LOG_FILE, "");
+}
 
 const transport = pino.transport({
   targets: [

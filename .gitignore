@@ -1,2 +1,4 @@
 /node_modules
 /bun.lock
+/logs
+package-lock.json
