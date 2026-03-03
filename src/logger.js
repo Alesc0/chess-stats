@@ -1,6 +1,6 @@
 const pino = require("pino");
 
-const LOG_FILE = process.env.LOG_FILE ?? "chess-stats.log";
+const LOG_FILE = process.env.LOG_FILE ?? "logs/chess-stats.log";
 
 const transport = pino.transport({
   targets: [
