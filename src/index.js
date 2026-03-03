@@ -1,4 +1,7 @@
 const express = require("express");
+const { version } = require("../package.json");
+const logger = require("./logger");
+const pinoHttp = require("pino-http");
 const { fetchChessDotCom } = require("./providers/chessdotcom");
 const { fetchLichess } = require("./providers/lichess");
 const {
@@ -14,6 +17,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
 
+// Request logging
+app.use(
+  pinoHttp({
+    logger,
+    customLogLevel: (_req, res) =>
+      res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
+    customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    customErrorMessage:   (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    serializers: {
+      req: (req) => ({
+        method: req.method,
+        url: req.url,
+        remoteAddress:
+          req.headers?.["x-forwarded-for"]?.split(",")[0].trim() ??
+          req.remoteAddress,
+      }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
+  }),
+);
+
 // Simple in-memory cache: key → { data, expires }
 const cache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -23,13 +47,16 @@ function getCached(key) {
   if (!entry) return null;
   if (Date.now() > entry.expires) {
     cache.delete(key);
+    logger.debug({ key }, "cache expired");
     return null;
   }
+  logger.debug({ key }, "cache hit");
   return entry.data;
 }
 
 function setCache(key, data) {
   cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+  logger.debug({ key, ttl_ms: CACHE_TTL_MS }, "cache set");
 }
 
 /**
@@ -53,6 +80,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
     let stats = getCached(cacheKey);
 
     if (!stats) {
+      logger.info({ platform: normalized, username }, "fetching stats");
       if (normalized === "chessdotcom" || normalized === "chesscommunity") {
         stats = await fetchChessDotCom(username);
       } else if (normalized === "lichess") {
@@ -76,6 +104,10 @@ app.get("/stats/:platform/:username", async (req, res) => {
       .send(svg);
   } catch (err) {
     const status = err.status ?? 500;
+    logger[status >= 500 ? "error" : "warn"](
+      { platform, username, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      "stats error",
+    );
     if (format === "json") {
       return res.status(status).json({ error: err.message });
     }
@@ -120,6 +152,8 @@ app.get("/history/:platform/:username", async (req, res) => {
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
 
+  logger.info({ platform: normalized, username, modes, months }, "fetching history");
+
   function historyCached(key) {
     const entry = cache.get(key);
     if (!entry) return null;
@@ -137,6 +171,7 @@ app.get("/history/:platform/:username", async (req, res) => {
         const cacheKey = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
         let result = historyCached(cacheKey);
         if (!result) {
+          logger.debug({ platform: normalized, username, mode, months }, "cache miss — fetching history");
           if (normalized === "chessdotcom" || normalized === "chesscommunity") {
             result = await fetchChessDotComHistory(username, mode, months);
           } else if (normalized === "lichess") {
@@ -146,6 +181,7 @@ app.get("/history/:platform/:username", async (req, res) => {
               error: `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
             });
           }
+          logger.debug({ platform: normalized, username, mode, points: result.points?.length ?? 0 }, "history fetched");
           cache.set(cacheKey, {
             data: result,
             expires: Date.now() + HISTORY_TTL,
@@ -175,6 +211,10 @@ app.get("/history/:platform/:username", async (req, res) => {
       .send(svg);
   } catch (err) {
     const status = err.status ?? 500;
+    logger[status >= 500 ? "error" : "warn"](
+      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      "history error",
+    );
     if (format === "json") {
       return res.status(status).json({ error: err.message });
     }
@@ -263,6 +303,10 @@ app.get("/combined/:platform/:username", async (req, res) => {
       .send(svg);
   } catch (err) {
     const status = err.status ?? 500;
+    logger[status >= 500 ? "error" : "warn"](
+      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      "combined error",
+    );
     const { colors: ec } = resolveTheme(theme);
     const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="80" viewBox="0 0 480 80">
       <rect width="480" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
@@ -274,7 +318,7 @@ app.get("/combined/:platform/:username", async (req, res) => {
 });
 
 // Health check
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/health", (_req, res) => res.json({ status: "ok", version }));
 
 // Root usage hint
 app.get("/", (_req, res) => {
@@ -314,5 +358,5 @@ app.get("/", (_req, res) => {
   });
 });
 app.listen(PORT, () => {
-  console.log(`Chess stats API listening on port ${PORT}`);
+  logger.info({ version, port: PORT, defaultTheme: DEFAULT_THEME }, "server started");
 });

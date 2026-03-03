@@ -1,15 +1,17 @@
 {
   "name": "chess-stats",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "API that returns a chess stats card image for a given username",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "bun src/index.js",
+    "dev": "bun --hot src/index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
