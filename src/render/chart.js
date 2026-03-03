@@ -1,4 +1,5 @@
 const { resolveTheme } = require("./themes");
+const { esc, lerp } = require("./utils");
 
 // Fallback colors if a mode key isn't in the theme
 const MODE_COLORS_FALLBACK = {
@@ -14,11 +15,6 @@ const PAD = { top: 58, right: 30, bottom: 40, left: 58 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
 
-function lerp(val, inMin, inMax, outMin, outMax) {
-  if (inMin === inMax) return (outMin + outMax) / 2;
-  return outMin + ((val - inMin) / (inMax - inMin)) * (outMax - outMin);
-}
-
 function niceStep(range, targetTicks) {
   const raw = range / targetTicks;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -31,13 +27,6 @@ function formatDate(date, monthsSpan) {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
   return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-}
-
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -72,7 +61,7 @@ function renderChart({ username, platform, mode, points, months = 6, themeName }
   if (allSeries.length === 0) {
     const modesStr = modes.join(", ");
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <rect width="${W}" height="${H}" rx="10" fill="${COLORS.bg}" stroke="${COLORS.border}" stroke-width="1"/>
+  <rect width="${W}" height="${H}" rx="12" fill="${COLORS.bg}" stroke="${COLORS.border}" stroke-width="1"/>
   <text x="${W / 2}" y="${H / 2 - 10}" text-anchor="middle" fill="${COLORS.muted}" font-size="14" font-family="monospace">No data found for ${esc(username)} (${esc(modesStr)})</text>
   <text x="${W / 2}" y="${H / 2 + 14}" text-anchor="middle" fill="${COLORS.border}" font-size="11" font-family="sans-serif">Try a different mode or a longer time range</text>
 </svg>`;
@@ -211,7 +200,10 @@ function renderChart({ username, platform, mode, points, months = 6, themeName }
   </defs>
 
   <!-- Background -->
-  <rect width="${W}" height="${H}" rx="10" fill="${COLORS.bg}" stroke="${COLORS.border}" stroke-width="1"/>
+  <rect width="${W}" height="${H}" rx="12" fill="${COLORS.bg}" stroke="${COLORS.border}" stroke-width="1"/>
+
+  <!-- Header accent bar -->
+  <rect x="0" y="10" width="3" height="38" rx="1.5" fill="${COLORS.accent}"/>
 
   <!-- Header -->
   <text x="${PAD.left}" y="22" fill="${COLORS.text}" font-size="13" font-family="monospace" font-weight="bold">${esc(username)}</text>

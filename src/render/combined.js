@@ -1,6 +1,7 @@
 const { resolveTheme } = require("./themes");
+const { esc, fmt, lerp, platformUrl } = require("./utils");
 
-// Same dimensions as the normal stats card
+// ── Canvas ─────────────────────────────────────────────────────────────────────────────
 const W = 480;
 const H = 250;
 const RATING_REF = 3200;
@@ -22,43 +23,22 @@ const WLD_SEP_Y = ROW_TOP + 5 * ROW_STEP + 2; // separator line
 const WLD_Y = WLD_SEP_Y + 14; // W/L/D numbers baseline
 const WINPCT_Y = WLD_Y + 22; // win % line
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Rating bar constants (left pane)
+const BAR_X = 80;
+const BAR_W = 46;
 
-function fmt(val) {
-  return val != null ? String(val) : "–";
-}
-
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function lerp(val, inMin, inMax, outMin, outMax) {
-  if (inMin === inMax) return (outMin + outMax) / 2;
-  return outMin + ((val - inMin) / (inMax - inMin)) * (outMax - outMin);
-}
-
-function platformUrl(platform, username) {
-  if (platform === "Lichess") return `https://lichess.org/@/${username}`;
-  return `https://www.chess.com/member/${username}`;
-}
-
-// ── Compact rating row: dot · label · mini-bar · number ───────────────────────
+// ── Compact rating row: dot · label · gradient mini-bar · number ─────────────────────
 function ratingRow({ label, value, color, y, C }) {
   const hasVal = value != null;
-  const BAR_X = 80;
-  const BAR_W = 46;
   const fillW = hasVal
     ? Math.max(3, Math.round((value / RATING_REF) * BAR_W))
     : 0;
+  const gradId = `ratingBarGrad_${label.toLowerCase()}`;
   return `
   <circle cx="14" cy="${y - 4}" r="3" fill="${hasVal ? color : C.border}"/>
   <text x="22" y="${y}" fill="${C.muted}" font-size="10" font-family="sans-serif">${label}</text>
   <rect x="${BAR_X}" y="${y - 8}" width="${BAR_W}" height="4" rx="2" fill="${C.border}" opacity="0.35"/>
-  ${hasVal ? `<rect x="${BAR_X}" y="${y - 8}" width="${fillW}" height="4" rx="2" fill="${color}" opacity="0.8"/>` : ""}
+  ${hasVal ? `<rect x="${BAR_X}" y="${y - 8}" width="${fillW}" height="4" rx="2" fill="url(#${gradId})"/>` : ""}
   <text x="${DIVIDER_X - 6}" y="${y}" text-anchor="end"
         fill="${hasVal ? color : C.border}" font-size="11" font-family="monospace"
         font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>`;
@@ -218,10 +198,24 @@ function renderCombined(stats, historySeries, themeName) {
       <stop offset="70%"  stop-color="${C.border}" stop-opacity="1"/>
       <stop offset="100%" stop-color="${C.border}" stop-opacity="0"/>
     </linearGradient>
+    <!-- Per-mode rating-bar gradients -->
+    <linearGradient id="ratingBarGrad_bullet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="${C.bullet}"/>
+      <stop offset="100%" stop-color="${C.bullet}" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="ratingBarGrad_blitz" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="${C.blitz}"/>
+      <stop offset="100%" stop-color="${C.blitz}" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="ratingBarGrad_rapid" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="${C.rapid}"/>
+      <stop offset="100%" stop-color="${C.rapid}" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="ratingBarGrad_puzzle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="${C.puzzle}"/>
+      <stop offset="100%" stop-color="${C.puzzle}" stop-opacity="0.45"/>
+    </linearGradient>
     <clipPath id="hdrClip"><rect width="${W}" height="${HEADER_H}" rx="12"/></clipPath>
-    <clipPath id="miniClip2">
-      <rect x="${CP_L}" y="${CP_T}" width="${CP_R - CP_L}" height="${CP_B - CP_T}"/>
-    </clipPath>
   </defs>
 
   <!-- Background -->

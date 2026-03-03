@@ -1,21 +1,32 @@
 const { resolveTheme } = require("./themes");
+const { esc, fmt } = require("./utils");
 
+// ── Canvas ────────────────────────────────────────────────────────────────────
 const W = 480;
 const H = 250;
 
-// Reference ceiling for rating bars
+// ── Layout ────────────────────────────────────────────────────────────────────
+const HEADER_H = 52;
+const DIVIDER_X = 288;
+const BAR_X = 166;
+const BAR_W = DIVIDER_X - BAR_X - 14; // ~108 px
+
+// ── Donut ─────────────────────────────────────────────────────────────────────
+const DONUT_CX = 370;
+const DONUT_CY = 147;
+const DONUT_R = 37;
+const DONUT_SW = 15;
+
+// Ceiling rating used to scale the progress bars
 const RATING_REF = 3200;
 
-function fmt(val) {
-  return val != null ? String(val) : "–";
-}
-
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+// ── Rating row modes ──────────────────────────────────────────────────────────
+const RATING_ROWS = [
+  { label: "Bullet", key: "bullet", y: 88 },
+  { label: "Blitz",  key: "blitz",  y: 113 },
+  { label: "Rapid",  key: "rapid",  y: 138 },
+  { label: "Puzzle", key: "puzzle", y: 163 },
+];
 
 // ── Donut arc segment ────────────────────────────────────────────────────────
 // Draws one arc of a donut chart using stroke-dasharray on a full circle.
@@ -32,19 +43,24 @@ function donutArc(cx, cy, r, sw, total, count, startDeg, color) {
     transform="rotate(${rotateDeg} ${cx} ${cy})"/>`;
 }
 
-// ── Rating row with a colored bar ────────────────────────────────────────────
-function ratingRow({ label, value, color, icon, y, barX, barW, C }) {
+/**
+ * Rating row: indicator dot · label · value · gradient progress bar.
+ * The bar fill references a per-mode gradient defined in <defs>.
+ */
+function ratingRow({ label, value, color, y, C }) {
   const hasVal = value != null;
   const fillW = hasVal
-    ? Math.max(5, Math.round((value / RATING_REF) * barW))
+    ? Math.max(4, Math.round((value / RATING_REF) * BAR_W))
     : 0;
+  const gradId = `ratingBarGrad_${label.toLowerCase()}`;
   return `
-  <circle cx="28" cy="${y - 3.5}" r="4" fill="${hasVal ? color : C.border}"/>
-  <text x="40" y="${y}" fill="${C.muted}" font-size="11" font-family="sans-serif">${icon} ${label}</text>
-  <text x="${barX - 8}" y="${y}" text-anchor="end"
-        fill="${hasVal ? color : C.muted}" font-size="12" font-family="monospace" font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>
-  <rect x="${barX}" y="${y - 9}" width="${barW}" height="6" rx="3" fill="${C.border}" opacity="0.4"/>
-  ${hasVal ? `<rect x="${barX}" y="${y - 9}" width="${fillW}" height="6" rx="3" fill="${color}" opacity="0.85"/>` : ""}`;
+  <circle cx="28" cy="${y - 4}" r="4" fill="${hasVal ? color : C.border}"/>
+  <text x="40" y="${y}" fill="${C.muted}" font-size="11" font-family="sans-serif">${label}</text>
+  <text x="${BAR_X - 8}" y="${y}" text-anchor="end"
+        fill="${hasVal ? color : C.muted}" font-size="12" font-family="monospace"
+        font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>
+  <rect x="${BAR_X}" y="${y - 9}" width="${BAR_W}" height="6" rx="3" fill="${C.border}" opacity="0.35"/>
+  ${hasVal ? `<rect x="${BAR_X}" y="${y - 9}" width="${fillW}" height="6" rx="3" fill="url(#${gradId})"/>` : ""}`;
 }
 
 // ── W/L/D stat column ────────────────────────────────────────────────────────
@@ -65,25 +81,11 @@ function statCol(label, value, color, cx, y, C) {
 function renderCard(stats, themeName) {
   const { colors: C } = resolveTheme(themeName);
 
-  // ── Header ─────────────────────────────────────────────────────────────────
-  const HEADER_H = 52;
-
-  // Rough monospace character width at size 17
+  // ── Header measurements ──────────────────────────────────────────────────
   const usernameW = esc(stats.username).length * 10.5;
   const titleBadgeW = stats.title ? stats.title.length * 7.5 + 14 : 0;
   const titleBadgeX = 32 + usernameW + 8;
   const countryX = titleBadgeX + (stats.title ? titleBadgeW + 8 : 0);
-
-  // ── Layout constants ───────────────────────────────────────────────────────
-  const DIVIDER_X = 288;
-  const BAR_X = 168;
-  const BAR_W = DIVIDER_X - BAR_X - 16; // ~104 px
-
-  // ── Donut ─────────────────────────────────────────────────────────────────
-  const DONUT_CX = 370;
-  const DONUT_CY = 147;
-  const DONUT_R = 37;
-  const DONUT_SW = 15;
 
   const wins = stats.wins ?? 0;
   const losses = stats.losses ?? 0;
@@ -95,7 +97,7 @@ function renderCard(stats, themeName) {
   const lossDeg = total > 0 ? (losses / total) * 360 : 0;
 
   const bgRing = `<circle cx="${DONUT_CX}" cy="${DONUT_CY}" r="${DONUT_R}"
-    fill="none" stroke="${C.border}" stroke-width="${DONUT_SW}"/>`;
+    fill="none" stroke="${C.border}" stroke-width="${DONUT_SW}" opacity="0.4"/>`;
   const winArc = donutArc(
     DONUT_CX,
     DONUT_CY,
@@ -127,9 +129,8 @@ function renderCard(stats, themeName) {
     C.draw,
   );
 
-  // ── W/L/D columns below donut ─────────────────────────────────────────────
-  const COL_COUNT = 3;
-  const COL_W = (W - DIVIDER_X - 16) / COL_COUNT;
+  // ── W/L/D column positions ─────────────────────────────────────────────
+  const COL_W = (W - DIVIDER_X - 16) / 3;
   const statY = DONUT_CY + DONUT_R + DONUT_SW / 2 + 18;
   const colX = (i) => DIVIDER_X + 8 + COL_W * i + COL_W / 2;
 
@@ -143,17 +144,22 @@ function renderCard(stats, themeName) {
       <stop offset="0%" stop-color="${C.accent}" stop-opacity="0.15"/>
       <stop offset="70%" stop-color="${C.accent}" stop-opacity="0"/>
     </linearGradient>
+    <!-- Per-mode rating-bar gradients -->
     <linearGradient id="ratingBarGrad_bullet" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="${C.bullet}"/><stop offset="100%" stop-color="${C.bullet}" stop-opacity="0.5"/>
+      <stop offset="0%"   stop-color="${C.bullet}"/>
+      <stop offset="100%" stop-color="${C.bullet}" stop-opacity="0.45"/>
     </linearGradient>
     <linearGradient id="ratingBarGrad_blitz" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="${C.blitz}"/><stop offset="100%" stop-color="${C.blitz}" stop-opacity="0.5"/>
+      <stop offset="0%"   stop-color="${C.blitz}"/>
+      <stop offset="100%" stop-color="${C.blitz}" stop-opacity="0.45"/>
     </linearGradient>
     <linearGradient id="ratingBarGrad_rapid" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="${C.rapid}"/><stop offset="100%" stop-color="${C.rapid}" stop-opacity="0.5"/>
+      <stop offset="0%"   stop-color="${C.rapid}"/>
+      <stop offset="100%" stop-color="${C.rapid}" stop-opacity="0.45"/>
     </linearGradient>
     <linearGradient id="ratingBarGrad_puzzle" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="${C.puzzle}"/><stop offset="100%" stop-color="${C.puzzle}" stop-opacity="0.5"/>
+      <stop offset="0%"   stop-color="${C.puzzle}"/>
+      <stop offset="100%" stop-color="${C.puzzle}" stop-opacity="0.45"/>
     </linearGradient>
   </defs>
 
@@ -196,28 +202,17 @@ function renderCard(stats, themeName) {
   <text x="${W - 51}" y="30" text-anchor="middle" fill="${C.muted}" font-size="9.5" font-family="sans-serif">${esc(stats.platform)}</text>
 
   <!-- ── Section labels ── -->
-  <text x="22" y="70" fill="${C.muted}" font-size="9" font-family="sans-serif" letter-spacing="1.5">RATINGS</text>
-  <text x="${DIVIDER_X + 10}" y="70" fill="${C.muted}" font-size="9" font-family="sans-serif" letter-spacing="1.5">RECORD</text>
+  <text x="22" y="70" fill="${C.muted}" font-size="9" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RATINGS</text>
+  <text x="${DIVIDER_X + 10}" y="70" fill="${C.muted}" font-size="9" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RECORD</text>
 
   <!-- ── Rating rows ── -->
-  ${[
-    { label: "Bullet", value: stats.bullet, color: C.bullet, icon: "·", y: 88 },
-    { label: "Blitz", value: stats.blitz, color: C.blitz, icon: "·", y: 113 },
-    { label: "Rapid", value: stats.rapid, color: C.rapid, icon: "·", y: 138 },
-    {
-      label: "Puzzle",
-      value: stats.puzzle,
-      color: C.puzzle,
-      icon: "·",
-      y: 163,
-    },
-  ]
-    .map((r) => ratingRow({ ...r, barX: BAR_X, barW: BAR_W, C }))
-    .join("")}
+  ${RATING_ROWS.map((r) =>
+    ratingRow({ label: r.label, value: stats[r.key], color: C[r.key], y: r.y, C })
+  ).join("")}
 
   <!-- ── Vertical divider ── -->
   <line x1="${DIVIDER_X}" y1="${HEADER_H + 10}" x2="${DIVIDER_X}" y2="${H - 16}"
-        stroke="${C.border}" stroke-width="1"/>
+        stroke="${C.border}" stroke-width="1" opacity="0.6"/>
 
   <!-- ── Donut chart ── -->
   ${bgRing}
@@ -232,13 +227,13 @@ function renderCard(stats, themeName) {
         fill="${C.muted}" font-size="8.5" font-family="sans-serif" letter-spacing="0.6">WIN RATE</text>
 
   <!-- ── W / L / D columns ── -->
-  ${statCol("WINS", wins, C.win, colX(0), statY, C)}
+  ${statCol("WINS",   wins,   C.win,  colX(0), statY, C)}
   ${statCol("LOSSES", losses, C.loss, colX(1), statY, C)}
-  ${statCol("DRAWS", draws, C.draw, colX(2), statY, C)}
+  ${statCol("DRAWS",  draws,  C.draw, colX(2), statY, C)}
 
   <!-- ── Footer ── -->
   <text x="22" y="${H - 10}" fill="${C.border}" font-size="9" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
-  <text x="${W - 18}" y="${H - 8}" text-anchor="end" fill="${C.border}" font-size="20" font-family="serif">♟</text>
+  <text x="${W - 18}" y="${H - 8}" text-anchor="end" fill="${C.border}" font-size="18" font-family="serif">♟</text>
 </svg>`;
 }
 

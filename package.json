@@ -1,6 +1,6 @@
 {
   "name": "chess-stats",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "API that returns a chess stats card image for a given username",
   "main": "src/index.js",
   "scripts": {
