@@ -1,5 +1,6 @@
 const { resolveTheme } = require("./themes");
 const { esc, fmt } = require("./utils");
+const { renderStarEffect, renderTitleGlow } = require("./titleEffects");
 
 // ── Canvas ────────────────────────────────────────────────────────────────────
 const W = 480;
@@ -149,12 +150,18 @@ function renderCard(stats, themeName) {
   const statY = DONUT_CY + DONUT_R + DONUT_SW / 2 + 18;
   const colX = (i) => DIVIDER_X + 8 + COL_W * i + COL_W / 2;
 
+  // ── Title effects ──────────────────────────────────────────────────────
+  const snow = renderStarEffect({ title: stats.title, width: W, height: H, count: 14, clipId: "starClip" });
+  const glow = renderTitleGlow({ title: stats.title, width: W, height: H });
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
   viewBox="0 0 ${W} ${H}" role="img" aria-label="Chess stats for ${esc(stats.username)}">
 
   <title>Chess Stats – ${esc(stats.username)}</title>
 
   <defs>
+    ${snow.defs}
+    ${glow.defs}
     <linearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="${C.accent}" stop-opacity="0.15"/>
       <stop offset="70%" stop-color="${C.accent}" stop-opacity="0"/>
@@ -193,8 +200,7 @@ function renderCard(stats, themeName) {
   <text x="32" y="33" fill="${C.text}"
         font-size="${FS_USERNAME}" font-family="monospace" font-weight="bold" letter-spacing="0.3">${esc(stats.username)}</text>
 
-  ${
-    stats.title
+  ${stats.title
       ? `
   <!-- ── Title badge ── -->
   <rect x="${titleBadgeX}" y="17" width="${titleBadgeW}" height="18" rx="4"
@@ -202,15 +208,14 @@ function renderCard(stats, themeName) {
   <text x="${titleBadgeX + titleBadgeW / 2}" y="30" text-anchor="middle"
         fill="${C.titleBadgeText}" font-size="${FS_TITLE_BADGE}" font-family="monospace" font-weight="bold">${esc(stats.title)}</text>`
       : ""
-  }
+    }
 
-  ${
-    stats.country
+  ${stats.country
       ? `
   <!-- ── Country ── -->
   <text x="${countryX}" y="30" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(stats.country)}</text>`
       : ""
-  }
+    }
 
   <!-- ── Platform pill ── -->
   <rect x="${W - 88}" y="17" width="74" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
@@ -222,14 +227,14 @@ function renderCard(stats, themeName) {
 
   <!-- ── Rating rows ── -->
   ${RATING_ROWS.map((r) =>
-    ratingRow({
-      label: r.label,
-      value: stats[r.key],
-      color: C[r.key],
-      y: r.y,
-      C,
-    }),
-  ).join("")}
+      ratingRow({
+        label: r.label,
+        value: stats[r.key],
+        color: C[r.key],
+        y: r.y,
+        C,
+      }),
+    ).join("")}
 
   <!-- ── Vertical divider ── -->
   <line x1="${DIVIDER_X}" y1="${HEADER_H + 10}" x2="${DIVIDER_X}" y2="${H - 16}"
@@ -255,6 +260,9 @@ function renderCard(stats, themeName) {
   <!-- ── Footer ── -->
   <text x="22" y="${H - 10}" fill="${C.border}" font-size="${FS_FOOTER}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
   <text x="${W - 18}" y="${H - 8}" text-anchor="end" fill="${C.border}" font-size="${FS_FOOTER_ICON}" font-family="serif">♟</text>
+
+  ${glow.markup}
+  ${snow.markup}
 </svg>`;
 }
 

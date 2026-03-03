@@ -83,6 +83,7 @@ function renderBlink({
         points,
         months,
         themeName,
+        title: stats.title ?? null,
     });
 
     const cardGroup = svgToGroup(cardSvg, { className: "blink-card" });

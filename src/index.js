@@ -166,9 +166,25 @@ app.get("/history/:platform/:username", async (req, res) => {
   }
 
   try {
+    // Fetch stats (for the title) + all history modes in parallel
+    const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
+    let stats = getCached(statsCacheKey);
+    const statsPromise = stats
+      ? Promise.resolve(stats)
+      : (async () => {
+        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+          stats = await fetchChessDotCom(username);
+        } else if (normalized === "lichess") {
+          stats = await fetchLichess(username);
+        }
+        if (stats) setCache(statsCacheKey, stats);
+        return stats;
+      })().catch(() => null); // non-critical — ignore errors
+
     // Fetch all requested modes in parallel, using per-mode cache keys
-    const results = await Promise.all(
-      modes.map(async (mode) => {
+    const [resolvedStats, ...results] = await Promise.all([
+      statsPromise,
+      ...modes.map(async (mode) => {
         const cacheKey = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
         let result = historyCached(cacheKey);
         if (!result) {
@@ -190,7 +206,7 @@ app.get("/history/:platform/:username", async (req, res) => {
         }
         return result;
       }),
-    );
+    ]);
 
     if (format === "json") {
       // Single mode → keep original shape; multiple → return array
@@ -204,6 +220,7 @@ app.get("/history/:platform/:username", async (req, res) => {
       points: results.map((r) => r.points),
       months,
       themeName: theme,
+      title: resolvedStats?.title ?? null,
     });
 
     res
