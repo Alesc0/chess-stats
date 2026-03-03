@@ -11,6 +11,7 @@ const {
 const { renderCard } = require("./render/card");
 const { renderChart } = require("./render/chart");
 const { renderCombined } = require("./render/combined");
+const { renderBlink } = require("./render/blink");
 const { resolveTheme, THEMES } = require("./render/themes");
 
 const app = express();
@@ -24,7 +25,7 @@ app.use(
     customLogLevel: (_req, res) =>
       res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
     customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
-    customErrorMessage:   (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
     serializers: {
       req: (req) => ({
         method: req.method,
@@ -262,20 +263,20 @@ app.get("/combined/:platform/:username", async (req, res) => {
     const statsPromise = stats
       ? Promise.resolve(stats)
       : (async () => {
-          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-            stats = await fetchChessDotCom(username);
-          } else if (normalized === "lichess") {
-            stats = await fetchLichess(username);
-          } else {
-            const err = new Error(
-              `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-            );
-            err.status = 400;
-            throw err;
-          }
-          setCache(statsCacheKey, stats);
-          return stats;
-        })();
+        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+          stats = await fetchChessDotCom(username);
+        } else if (normalized === "lichess") {
+          stats = await fetchLichess(username);
+        } else {
+          const err = new Error(
+            `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        setCache(statsCacheKey, stats);
+        return stats;
+      })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
@@ -317,6 +318,105 @@ app.get("/combined/:platform/:username", async (req, res) => {
   }
 });
 
+/**
+ * GET /blink/chessdotcom/:username
+ * GET /blink/lichess/:username
+ *
+ * Returns a single SVG that CSS-animates between the stats card and the
+ * rating-history chart (alternating / "blinking" view).
+ * Optional query params:
+ *   ?mode=blitz                   single mode (default)
+ *   ?mode=bullet,blitz,rapid      comma-separated for multi-mode overlay (max 4)
+ *   ?months=6                     months of history (1-12)
+ *   ?theme=dark                   theme name
+ */
+app.get("/blink/:platform/:username", async (req, res) => {
+  const { platform, username } = req.params;
+
+  const rawMode = req.query.mode ?? "blitz";
+  const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
+    .flatMap((m) => m.split(","))
+    .map((m) => m.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const months = Math.min(12, Math.max(1, parseInt(req.query.months, 10) || 6));
+  const theme = req.query.theme ?? DEFAULT_THEME;
+
+  const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
+  const HISTORY_TTL = 15 * 60 * 1000;
+
+  try {
+    // Stats + all mode histories in parallel
+    const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
+    let stats = getCached(statsCacheKey);
+    const statsPromise = stats
+      ? Promise.resolve(stats)
+      : (async () => {
+        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+          stats = await fetchChessDotCom(username);
+        } else if (normalized === "lichess") {
+          stats = await fetchLichess(username);
+        } else {
+          const err = new Error(
+            `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        setCache(statsCacheKey, stats);
+        return stats;
+      })();
+
+    const historyPromises = modes.map(async (mode) => {
+      const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
+      let result = getCached(key);
+      if (!result) {
+        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+          result = await fetchChessDotComHistory(username, mode, months);
+        } else if (normalized === "lichess") {
+          result = await fetchLichessHistory(username, mode, months);
+        }
+        cache.set(key, { data: result, expires: Date.now() + HISTORY_TTL });
+      }
+      return result;
+    });
+
+    const [resolvedStats, ...historySeries] = await Promise.all([
+      statsPromise,
+      ...historyPromises,
+    ]);
+
+    const svg = renderBlink({
+      stats: resolvedStats,
+      username: resolvedStats.username ?? username,
+      platform: normalized === "lichess" ? "Lichess" : "Chess.com",
+      mode: historySeries.map((r) => r.mode),
+      points: historySeries.map((r) => r.points),
+      months,
+      themeName: theme,
+    });
+
+    res
+      .set("Content-Type", "image/svg+xml")
+      .set("Cache-Control", `public, max-age=${HISTORY_TTL / 1000}`)
+      .send(svg);
+  } catch (err) {
+    const status = err.status ?? 500;
+    logger[status >= 500 ? "error" : "warn"](
+      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      "blink error",
+    );
+    const { colors: ec } = resolveTheme(theme);
+    const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="80" viewBox="0 0 600 80">
+      <rect width="600" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
+      <text x="20" y="30" fill="${ec.loss}" font-size="13" font-family="monospace" font-weight="bold">Error</text>
+      <text x="20" y="52" fill="${ec.muted}" font-size="11" font-family="monospace">${err.message.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
+    </svg>`;
+    res.status(status).set("Content-Type", "image/svg+xml").send(errorSvg);
+  }
+});
+
 // Health check
 app.get("/health", (_req, res) => res.json({ status: "ok", version }));
 
@@ -336,6 +436,10 @@ app.get("/", (_req, res) => {
         "GET /combined/chessdotcom/:username",
         "GET /combined/lichess/:username",
       ],
+      blink: [
+        "GET /blink/chessdotcom/:username",
+        "GET /blink/lichess/:username",
+      ],
     },
     options: {
       "?format=svg": "returns SVG image (default)",
@@ -354,6 +458,8 @@ app.get("/", (_req, res) => {
       "/combined/lichess/DrNykterstein?mode=bullet&months=3&theme=dracula",
       "/combined/chessdotcom/hikaru?mode=blitz&theme=nord",
       "/combined/chessdotcom/hikaru?mode=bullet,blitz,rapid&months=6",
+      "/blink/lichess/DrNykterstein?mode=blitz&months=3&theme=dracula",
+      "/blink/chessdotcom/hikaru?mode=bullet,blitz,rapid&months=6",
     ],
   });
 });
