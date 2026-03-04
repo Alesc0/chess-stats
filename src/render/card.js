@@ -21,19 +21,19 @@ const DONUT_SW = 15;
 const RATING_REF = 3200;
 
 // ── Font sizes ───────────────────────────────────────────────────────────────
-const FS_USERNAME = 19; // header username
-const FS_TITLE_BADGE = 11; // title badge (e.g. GM, IM)
-const FS_COUNTRY = 12; // country text
-const FS_PLATFORM = 11; // platform pill
-const FS_SECTION_LBL = 10; // "RATINGS" / "RECORD" labels
-const FS_ROW_LABEL = 12; // rating row label (Bullet, Blitz …)
-const FS_ROW_VALUE = 13; // rating row numeric value
-const FS_STAT_VALUE = 14; // W/L/D stat number
-const FS_STAT_LABEL = 10; // W/L/D stat caption
-const FS_DONUT_PCT = 19; // donut centre win-rate percentage
-const FS_DONUT_LBL = 10; // donut centre "WIN RATE" caption
-const FS_FOOTER = 10; // footer game-count text
-const FS_FOOTER_ICON = 20; // footer chess-piece glyph
+const FS_USERNAME = 29; // header username
+const FS_TITLE_BADGE = 17; // title badge (e.g. GM, IM)
+const FS_COUNTRY = 18; // country text
+const FS_PLATFORM = 17; // platform pill
+const FS_SECTION_LBL = 15; // "RATINGS" / "RECORD" labels
+const FS_ROW_LABEL = 18; // rating row label (Bullet, Blitz …)
+const FS_ROW_VALUE = 20; // rating row numeric value
+const FS_STAT_VALUE = 21; // W/L/D stat number
+const FS_STAT_LABEL = 15; // W/L/D stat caption
+const FS_DONUT_PCT = 29; // donut centre win-rate percentage
+const FS_DONUT_LBL = 15; // donut centre "WIN RATE" caption
+const FS_FOOTER = 15; // footer game-count text
+const FS_FOOTER_ICON = 30; // footer chess-piece glyph
 
 // ── Rating row modes ──────────────────────────────────────────────────────────
 const RATING_ROWS = [

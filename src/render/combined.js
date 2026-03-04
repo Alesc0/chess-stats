@@ -36,11 +36,11 @@ function ratingRow({ label, value, color, y, C }) {
   const gradId = `ratingBarGrad_${label.toLowerCase()}`;
   return `
   <circle cx="14" cy="${y - 4}" r="3" fill="${hasVal ? color : C.border}"/>
-  <text x="22" y="${y}" fill="${C.muted}" font-size="10" font-family="sans-serif">${label}</text>
+  <text x="22" y="${y}" fill="${C.muted}" font-size="15" font-family="sans-serif">${label}</text>
   <rect x="${BAR_X}" y="${y - 8}" width="${BAR_W}" height="4" rx="2" fill="${C.border}" opacity="0.35"/>
   ${hasVal ? `<rect x="${BAR_X}" y="${y - 8}" width="${fillW}" height="4" rx="2" fill="url(#${gradId})"/>` : ""}
   <text x="${DIVIDER_X - 6}" y="${y}" text-anchor="end"
-        fill="${hasVal ? color : C.border}" font-size="11" font-family="monospace"
+        fill="${hasVal ? color : C.border}" font-size="17" font-family="monospace"
         font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>`;
 }
 
@@ -52,7 +52,7 @@ function buildMiniChart({ series, C }) {
 
   if (valid.length === 0) {
     return `<text x="${midX}" y="${midY + 4}" text-anchor="middle"
-      fill="${C.muted}" font-size="10" font-family="monospace">no data</text>`;
+      fill="${C.muted}" font-size="15" font-family="monospace">no data</text>`;
   }
 
   const multi = valid.length > 1;
@@ -79,7 +79,7 @@ function buildMiniChart({ series, C }) {
     <line x1="${CP_L}" y1="${gy.toFixed(1)}" x2="${CP_R}" y2="${gy.toFixed(1)}"
       stroke="${C.border}" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
     <text x="${CP_L - 3}" y="${(gy + 3.5).toFixed(1)}" text-anchor="end"
-      fill="${C.muted}" font-size="8" font-family="monospace" opacity="0.7">${gVal}</text>`;
+      fill="${C.muted}" font-size="12" font-family="monospace" opacity="0.7">${gVal}</text>`;
     })
     .join("");
 
@@ -132,11 +132,11 @@ function buildLegend({ series, C }) {
       return `
     <circle cx="${(chipX + 5).toFixed(1)}" cy="${(LEGEND_Y - 4).toFixed(1)}" r="3" fill="${color}"/>
     <text x="${(chipX + 11).toFixed(1)}" y="${LEGEND_Y}"
-      fill="${C.muted}" font-size="9" font-family="monospace">${mode.toUpperCase()}</text>
+      fill="${C.muted}" font-size="14" font-family="monospace">${mode.toUpperCase()}</text>
     <text x="${(chipX + 11 + mode.length * 5.9 + 3).toFixed(1)}" y="${LEGEND_Y}"
-      fill="${C.text}" font-size="9" font-family="monospace" font-weight="bold">${last}</text>
+      fill="${C.text}" font-size="14" font-family="monospace" font-weight="bold">${last}</text>
     <text x="${(chipX + 11 + mode.length * 5.9 + 3 + String(last).length * 5.9 + 2).toFixed(1)}" y="${LEGEND_Y}"
-      fill="${dCol}" font-size="8" font-family="monospace"> ${dStr}</text>`;
+      fill="${dCol}" font-size="12" font-family="monospace"> ${dStr}</text>`;
     })
     .join("");
 }
