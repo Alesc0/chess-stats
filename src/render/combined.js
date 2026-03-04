@@ -1,5 +1,6 @@
 const { resolveTheme } = require("./themes");
 const { esc, fmt, lerp, platformUrl } = require("./utils");
+const { renderStarEffect, renderTitleGlow } = require("./titleEffects");
 
 // ── Canvas ─────────────────────────────────────────────────────────────────────────────
 const W = 480;
@@ -172,6 +173,10 @@ function renderCombined(stats, historySeries, themeName) {
   const chartSvg = buildMiniChart({ series: historySeries, C });
   const legendSvg = buildLegend({ series: historySeries, C });
 
+  // Title effects
+  const snow = renderStarEffect({ title: stats.title, width: W, height: H, count: 12, clipId: "starClipC" });
+  const glow = renderTitleGlow({ title: stats.title, width: W, height: H });
+
   const ratingRows = [
     { label: "Bullet", value: stats.bullet, color: C.bullet },
     { label: "Blitz", value: stats.blitz, color: C.blitz },
@@ -188,6 +193,8 @@ function renderCombined(stats, historySeries, themeName) {
   <title>Chess Stats – ${esc(stats.username)}</title>
 
   <defs>
+    ${snow.defs}
+    ${glow.defs}
     <linearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%"  stop-color="${C.accent}" stop-opacity="0.12"/>
       <stop offset="60%" stop-color="${C.accent}" stop-opacity="0"/>
@@ -232,8 +239,7 @@ function renderCombined(stats, historySeries, themeName) {
           font-weight="bold" letter-spacing="0.3" text-decoration="none">${esc(stats.username)}</text>
   </a>
 
-  ${
-    stats.title
+  ${stats.title
       ? `
   <!-- Title badge -->
   <rect x="${titleBadgeX}" y="15" width="${titleBadgeW}" height="15" rx="3"
@@ -242,16 +248,15 @@ function renderCombined(stats, historySeries, themeName) {
         fill="${C.titleBadgeText}" font-size="9" font-family="monospace" font-weight="bold">${esc(stats.title)}</text>
   `
       : ""
-  }
+    }
 
-  ${
-    stats.country
+  ${stats.country
       ? `
   <!-- Country -->
   <text x="${countryX}" y="28" fill="${C.muted}" font-size="10" font-family="sans-serif">${esc(stats.country)}</text>
   `
       : ""
-  }
+    }
 
   <!-- Platform pill -->
   <rect x="${W - 80}" y="14" width="66" height="16" rx="8" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
@@ -286,8 +291,7 @@ function renderCombined(stats, historySeries, themeName) {
   <text x="130" y="${WLD_Y + 11}" text-anchor="middle"
         fill="${C.muted}" font-size="8" font-family="sans-serif">D</text>
 
-  ${
-    winPct != null
+  ${winPct != null
       ? `
   <!-- Win rate -->
   <text x="14" y="${WINPCT_Y}" fill="${C.muted}" font-size="8.5" font-family="sans-serif">
@@ -295,7 +299,7 @@ function renderCombined(stats, historySeries, themeName) {
     <tspan dx="2" font-size="8">win rate</tspan>
   </text>`
       : ""
-  }
+    }
 
   <!-- Games total -->
   <text x="14" y="${FOOTER_Y}" fill="${C.border}" font-size="8" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
@@ -321,6 +325,9 @@ function renderCombined(stats, historySeries, themeName) {
   <!-- Chess glyph -->
   <text x="${W - 10}" y="${FOOTER_Y}" text-anchor="end"
         fill="${C.border}" font-size="16" font-family="serif">♟</text>
+
+  ${glow.markup}
+  ${snow.markup}
 
 </svg>`;
 }
