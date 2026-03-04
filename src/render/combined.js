@@ -3,30 +3,30 @@ const { esc, fmt, lerp, platformUrl } = require("./utils");
 const { renderStarEffect, renderTitleGlow } = require("./titleEffects");
 
 // ── Canvas ─────────────────────────────────────────────────────────────────────────────
-const W = 480;
-const H = 250;
+const W = 650;
+const H = 300;
 const RATING_REF = 3200;
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-const HEADER_H = 44;
-const DIVIDER_X = 158; // left pane width
+const HEADER_H = 58;
+const DIVIDER_X = 210; // left pane width
 const CP_L = DIVIDER_X + 10;
 const CP_R = W - 12;
 const CP_T = HEADER_H + 9;
-const CP_B = H - 26; // leave room for legend row
-const LEGEND_Y = H - 10;
-const FOOTER_Y = H - 10;
+const CP_B = H - 30; // leave room for legend row
+const LEGEND_Y = H - 13;
+const FOOTER_Y = H - 13;
 
 // Left pane rows
-const ROW_TOP = 57; // "RATINGS" label baseline
-const ROW_STEP = 16; // px between rating rows
+const ROW_TOP = 76; // "RATINGS" label baseline
+const ROW_STEP = 22; // px between rating rows
 const WLD_SEP_Y = ROW_TOP + 5 * ROW_STEP + 2; // separator line
-const WLD_Y = WLD_SEP_Y + 14; // W/L/D numbers baseline
-const WINPCT_Y = WLD_Y + 22; // win % line
+const WLD_Y = WLD_SEP_Y + 17;                  // W/L/D numbers baseline
+const WINPCT_Y = WLD_Y + 25;                   // win % line
 
 // Rating bar constants (left pane)
-const BAR_X = 80;
-const BAR_W = 46;
+const BAR_X = 106;
+const BAR_W = 64;
 
 // ── Compact rating row: dot · label · gradient mini-bar · number ─────────────────────
 function ratingRow({ label, value, color, y, C }) {
@@ -36,12 +36,12 @@ function ratingRow({ label, value, color, y, C }) {
     : 0;
   const gradId = `ratingBarGrad_${label.toLowerCase()}`;
   return `
-  <circle cx="14" cy="${y - 4}" r="3" fill="${hasVal ? color : C.border}"/>
-  <text x="22" y="${y}" fill="${C.muted}" font-size="15" font-family="sans-serif">${label}</text>
-  <rect x="${BAR_X}" y="${y - 8}" width="${BAR_W}" height="4" rx="2" fill="${C.border}" opacity="0.35"/>
-  ${hasVal ? `<rect x="${BAR_X}" y="${y - 8}" width="${fillW}" height="4" rx="2" fill="url(#${gradId})"/>` : ""}
+  <circle cx="17" cy="${y - 5}" r="4" fill="${hasVal ? color : C.border}"/>
+  <text x="26" y="${y}" fill="${C.muted}" font-size="11" font-family="sans-serif">${label}</text>
+  <rect x="${BAR_X}" y="${y - 8}" width="${BAR_W}" height="5" rx="2" fill="${C.border}" opacity="0.35"/>
+  ${hasVal ? `<rect x="${BAR_X}" y="${y - 8}" width="${fillW}" height="5" rx="2" fill="url(#${gradId})"/>` : ""}
   <text x="${DIVIDER_X - 6}" y="${y}" text-anchor="end"
-        fill="${hasVal ? color : C.border}" font-size="17" font-family="monospace"
+        fill="${hasVal ? color : C.border}" font-size="15" font-family="monospace"
         font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>`;
 }
 
@@ -53,7 +53,7 @@ function buildMiniChart({ series, C }) {
 
   if (valid.length === 0) {
     return `<text x="${midX}" y="${midY + 4}" text-anchor="middle"
-      fill="${C.muted}" font-size="15" font-family="monospace">no data</text>`;
+      fill="${C.muted}" font-size="11" font-family="monospace">no data</text>`;
   }
 
   const multi = valid.length > 1;
@@ -80,7 +80,7 @@ function buildMiniChart({ series, C }) {
     <line x1="${CP_L}" y1="${gy.toFixed(1)}" x2="${CP_R}" y2="${gy.toFixed(1)}"
       stroke="${C.border}" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
     <text x="${CP_L - 3}" y="${(gy + 3.5).toFixed(1)}" text-anchor="end"
-      fill="${C.muted}" font-size="12" font-family="monospace" opacity="0.7">${gVal}</text>`;
+      fill="${C.muted}" font-size="9" font-family="monospace" opacity="0.7">${gVal}</text>`;
     })
     .join("");
 
@@ -131,13 +131,13 @@ function buildLegend({ series, C }) {
       const chipX = CP_L + i * CHIP_W;
       const cx = chipX + CHIP_W / 2;
       return `
-    <circle cx="${(chipX + 5).toFixed(1)}" cy="${(LEGEND_Y - 4).toFixed(1)}" r="3" fill="${color}"/>
-    <text x="${(chipX + 11).toFixed(1)}" y="${LEGEND_Y}"
-      fill="${C.muted}" font-size="14" font-family="monospace">${mode.toUpperCase()}</text>
-    <text x="${(chipX + 11 + mode.length * 5.9 + 3).toFixed(1)}" y="${LEGEND_Y}"
-      fill="${C.text}" font-size="14" font-family="monospace" font-weight="bold">${last}</text>
-    <text x="${(chipX + 11 + mode.length * 5.9 + 3 + String(last).length * 5.9 + 2).toFixed(1)}" y="${LEGEND_Y}"
-      fill="${dCol}" font-size="12" font-family="monospace"> ${dStr}</text>`;
+    <circle cx="${(chipX + 6).toFixed(1)}" cy="${(LEGEND_Y - 5).toFixed(1)}" r="4" fill="${color}"/>
+    <text x="${(chipX + 13).toFixed(1)}" y="${LEGEND_Y}"
+      fill="${C.muted}" font-size="11" font-family="monospace">${mode.toUpperCase()}</text>
+    <text x="${(chipX + 13 + mode.length * 7.0 + 3).toFixed(1)}" y="${LEGEND_Y}"
+      fill="${C.text}" font-size="11" font-family="monospace" font-weight="bold">${last}</text>
+    <text x="${(chipX + 13 + mode.length * 7.0 + 3 + String(last).length * 7.0 + 2).toFixed(1)}" y="${LEGEND_Y}"
+      fill="${dCol}" font-size="9" font-family="monospace"> ${dStr}</text>`;
     })
     .join("");
 }
@@ -174,7 +174,13 @@ function renderCombined(stats, historySeries, themeName) {
   const legendSvg = buildLegend({ series: historySeries, C });
 
   // Title effects
-  const snow = renderStarEffect({ title: stats.title, width: W, height: H, count: 12, clipId: "starClipC" });
+  const snow = renderStarEffect({
+    title: stats.title,
+    width: W,
+    height: H,
+    count: 12,
+    clipId: "starClipC",
+  });
   const glow = renderTitleGlow({ title: stats.title, width: W, height: H });
 
   const ratingRows = [
@@ -230,82 +236,85 @@ function renderCombined(stats, historySeries, themeName) {
 
   <!-- Header fill + accent bar -->
   <rect clip-path="url(#hdrClip)" width="${W}" height="${HEADER_H}" fill="url(#hdrGrad)"/>
-  <rect x="0" y="9" width="3" height="${HEADER_H - 18}" rx="1.5" fill="${C.accent}"/>
+  <rect x="0" y="12" width="3" height="${HEADER_H - 24}" rx="1.5" fill="${C.accent}"/>
   <line x1="0" y1="${HEADER_H}" x2="${W}" y2="${HEADER_H}" stroke="${C.border}" stroke-width="1"/>
 
   <!-- Username (profile link) -->
   <a href="${profileHref}" target="_blank" rel="noopener noreferrer">
-    <text x="28" y="28" fill="${C.accent}" font-size="15" font-family="monospace"
+    <text x="28" y="39" fill="${C.accent}" font-size="17" font-family="monospace"
           font-weight="bold" letter-spacing="0.3" text-decoration="none">${esc(stats.username)}</text>
   </a>
 
-  ${stats.title
+  ${
+    stats.title
       ? `
   <!-- Title badge -->
-  <rect x="${titleBadgeX}" y="15" width="${titleBadgeW}" height="15" rx="3"
+  <rect x="${titleBadgeX}" y="23" width="${titleBadgeW}" height="18" rx="3"
         fill="${C.titleBadgeBg}" stroke="${C.titleBadgeBorder}" stroke-width="1"/>
-  <text x="${titleBadgeX + titleBadgeW / 2}" y="26" text-anchor="middle"
+  <text x="${titleBadgeX + titleBadgeW / 2}" y="36" text-anchor="middle"
         fill="${C.titleBadgeText}" font-size="9" font-family="monospace" font-weight="bold">${esc(stats.title)}</text>
   `
       : ""
-    }
+  }
 
-  ${stats.country
+  ${
+    stats.country
       ? `
   <!-- Country -->
-  <text x="${countryX}" y="28" fill="${C.muted}" font-size="10" font-family="sans-serif">${esc(stats.country)}</text>
+  <text x="${countryX}" y="39" fill="${C.muted}" font-size="11" font-family="sans-serif">${esc(stats.country)}</text>
   `
       : ""
-    }
+  }
 
   <!-- Platform pill -->
-  <rect x="${W - 80}" y="14" width="66" height="16" rx="8" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
-  <text x="${W - 47}" y="26" text-anchor="middle" fill="${C.muted}" font-size="9" font-family="sans-serif">${esc(stats.platform)}</text>
+  <rect x="${W - 104}" y="21" width="88" height="20" rx="10" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
+  <text x="${W - 60}" y="35" text-anchor="middle" fill="${C.muted}" font-size="10" font-family="sans-serif">${esc(stats.platform)}</text>
 
   <!-- ══ LEFT PANE ══════════════════════════════════════════════════════════ -->
 
   <!-- Section label -->
-  <text x="14" y="${ROW_TOP}" fill="${C.muted}" font-size="8" font-family="sans-serif"
+  <text x="16" y="${ROW_TOP}" fill="${C.muted}" font-size="9" font-family="sans-serif"
         letter-spacing="1.3" opacity="0.7">RATINGS</text>
 
   <!-- Rating rows: dot · label · mini bar · value -->
   ${ratingRows}
 
   <!-- W/L/D separator -->
-  <line x1="10" y1="${WLD_SEP_Y}" x2="${DIVIDER_X - 8}" y2="${WLD_SEP_Y}"
+  <line x1="12" y1="${WLD_SEP_Y}" x2="${DIVIDER_X - 10}" y2="${WLD_SEP_Y}"
         stroke="${C.border}" stroke-width="1" opacity="0.5"/>
 
   <!-- W/L/D numbers + labels -->
-  <text x="28" y="${WLD_Y}" text-anchor="middle"
-        fill="${C.win}" font-size="12" font-family="monospace" font-weight="bold">${wins.toLocaleString()}</text>
-  <text x="28" y="${WLD_Y + 11}" text-anchor="middle"
-        fill="${C.muted}" font-size="8" font-family="sans-serif">W</text>
+  <text x="38" y="${WLD_Y}" text-anchor="middle"
+        fill="${C.win}" font-size="18" font-family="monospace" font-weight="bold">${wins.toLocaleString()}</text>
+  <text x="38" y="${WLD_Y + 14}" text-anchor="middle"
+        fill="${C.muted}" font-size="9" font-family="sans-serif">W</text>
 
-  <text x="80" y="${WLD_Y}" text-anchor="middle"
-        fill="${C.loss}" font-size="12" font-family="monospace" font-weight="bold">${losses.toLocaleString()}</text>
-  <text x="80" y="${WLD_Y + 11}" text-anchor="middle"
-        fill="${C.muted}" font-size="8" font-family="sans-serif">L</text>
+  <text x="107" y="${WLD_Y}" text-anchor="middle"
+        fill="${C.loss}" font-size="18" font-family="monospace" font-weight="bold">${losses.toLocaleString()}</text>
+  <text x="107" y="${WLD_Y + 14}" text-anchor="middle"
+        fill="${C.muted}" font-size="9" font-family="sans-serif">L</text>
 
-  <text x="130" y="${WLD_Y}" text-anchor="middle"
-        fill="${C.draw}" font-size="12" font-family="monospace" font-weight="bold">${draws.toLocaleString()}</text>
-  <text x="130" y="${WLD_Y + 11}" text-anchor="middle"
-        fill="${C.muted}" font-size="8" font-family="sans-serif">D</text>
+  <text x="176" y="${WLD_Y}" text-anchor="middle"
+        fill="${C.draw}" font-size="18" font-family="monospace" font-weight="bold">${draws.toLocaleString()}</text>
+  <text x="176" y="${WLD_Y + 14}" text-anchor="middle"
+        fill="${C.muted}" font-size="9" font-family="sans-serif">D</text>
 
-  ${winPct != null
+  ${
+    winPct != null
       ? `
   <!-- Win rate -->
-  <text x="14" y="${WINPCT_Y}" fill="${C.muted}" font-size="8.5" font-family="sans-serif">
+  <text x="16" y="${WINPCT_Y}" fill="${C.muted}" font-size="10" font-family="sans-serif">
     <tspan fill="${C.win}" font-weight="bold" font-family="monospace">${winPct}%</tspan>
-    <tspan dx="2" font-size="8">win rate</tspan>
+    <tspan dx="2" font-size="9">win rate</tspan>
   </text>`
       : ""
-    }
+  }
 
   <!-- Games total -->
-  <text x="14" y="${FOOTER_Y}" fill="${C.border}" font-size="8" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
+  <text x="16" y="${FOOTER_Y}" fill="${C.border}" font-size="9" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
 
   <!-- ══ DIVIDER ════════════════════════════════════════════════════════════ -->
-  <line x1="${DIVIDER_X}" y1="${HEADER_H + 6}" x2="${DIVIDER_X}" y2="${H - 6}"
+  <line x1="${DIVIDER_X}" y1="${HEADER_H + 10}" x2="${DIVIDER_X}" y2="${H - 10}"
         stroke="url(#divGrad)" stroke-width="1"/>
 
   <!-- ══ RIGHT PANE ═════════════════════════════════════════════════════════ -->
@@ -323,8 +332,8 @@ function renderCombined(stats, historySeries, themeName) {
   ${legendSvg}
 
   <!-- Chess glyph -->
-  <text x="${W - 10}" y="${FOOTER_Y}" text-anchor="end"
-        fill="${C.border}" font-size="16" font-family="serif">♟</text>
+  <text x="${W - 14}" y="${FOOTER_Y}" text-anchor="end"
+        fill="${C.border}" font-size="20" font-family="serif">♟</text>
 
   ${glow.markup}
   ${snow.markup}
