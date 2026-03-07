@@ -1,19 +1,19 @@
-const express = require("express");
-const { version } = require("../package.json");
-const logger = require("./logger");
-const pinoHttp = require("pino-http");
-const { fetchChessDotCom } = require("./providers/chessdotcom");
-const { fetchLichess } = require("./providers/lichess");
-const {
+import express from "express";
+import pinoHttp from "pino-http";
+import { version } from "../package.json";
+import logger from "./logger";
+import { fetchChessDotCom } from "./providers/chessdotcom";
+import {
   fetchChessDotComHistory,
   fetchLichessHistory,
-} = require("./providers/history");
-const { renderCard } = require("./render/card");
-const { renderChart } = require("./render/chart");
-const { renderCombined } = require("./render/combined");
-const { renderBlink } = require("./render/blink");
-const { resolveTheme, THEMES } = require("./render/themes");
-
+} from "./providers/history";
+import { fetchLichess } from "./providers/lichess";
+import { renderBlink } from "./render/blink";
+import { renderChart } from "./render/chart";
+import { renderCombined } from "./render/combined";
+import { statsCard } from "./render/stats";
+import { resolveTheme, THEMES } from "./render/themes";
+import { ChessStats, RecentGame } from "./types";
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
@@ -22,41 +22,53 @@ const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
 app.use(
   pinoHttp({
     logger,
-    customLogLevel: (_req, res) =>
+    customLogLevel: (_req: any, res: any) =>
       res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
-    customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
-    customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    customSuccessMessage: (req: any, res: any) =>
+      `${req.method} ${req.url} ${res.statusCode}`,
+    customErrorMessage: (req: any, res: any, err: any) =>
+      `${req.method} ${req.url} ${res.statusCode}`,
     serializers: {
-      req: (req) => ({
+      req: (req: any) => ({
         method: req.method,
         url: req.url,
         remoteAddress:
           req.headers?.["x-forwarded-for"]?.split(",")[0].trim() ??
-          req.remoteAddress,
+          req.connection?.remoteAddress,
       }),
-      res: (res) => ({ statusCode: res.statusCode }),
+      res: (res: any) => ({ statusCode: res.statusCode }),
     },
   }),
 );
 
 // Simple in-memory cache: key → { data, expires }
-const cache = new Map();
+const cache = new Map<
+  string,
+  {
+    stats: ChessStats;
+    expires: number;
+    data?: any; // for history cache entries
+  }
+>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-function getCached(key) {
+function getCached(key: string): ChessStats | null {
   const entry = cache.get(key);
-  if (!entry) return null;
+  if (!entry || !entry.stats) return null;
   if (Date.now() > entry.expires) {
     cache.delete(key);
     logger.debug({ key }, "cache expired");
     return null;
   }
   logger.debug({ key }, "cache hit");
-  return entry.data;
+  return entry.stats;
 }
 
-function setCache(key, data) {
-  cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+function setCache(key: string, stats: ChessStats) {
+  cache.set(key, {
+    stats,
+    expires: Date.now() + CACHE_TTL_MS,
+  });
   logger.debug({ key, ttl_ms: CACHE_TTL_MS }, "cache set");
 }
 
@@ -68,11 +80,19 @@ function setCache(key, data) {
  * Optional query params:
  *   ?format=svg (default) | json  – return raw JSON instead of image
  *   ?theme=dark (default) | light | monokai | nord | solarized | dracula
+ *   ?modes=bullet,blitz,rapid (default) – comma-separated subset to show
  */
 app.get("/stats/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
   const format = req.query.format ?? "svg";
   const theme = req.query.theme ?? DEFAULT_THEME;
+  const VALID_MODES = new Set(["bullet", "blitz", "rapid", "puzzle"]);
+  const modes = req.query.modes
+    ? (req.query.modes as string)
+        .split(",")
+        .map((m) => m.trim().toLowerCase())
+        .filter((m) => VALID_MODES.has(m))
+    : ["bullet", "blitz", "rapid"];
 
   const normalized = platform.toLowerCase().replace(/[\.\-]/g, "");
   const cacheKey = `${normalized}:${username.toLowerCase()}`;
@@ -98,7 +118,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
       return res.json(stats);
     }
 
-    const svg = renderCard(stats, theme);
+    const svg = statsCard(stats, theme, modes);
     res
       .set("Content-Type", "image/svg+xml")
       .set("Cache-Control", `public, max-age=${CACHE_TTL_MS / 1000}`)
@@ -106,7 +126,13 @@ app.get("/stats/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "stats error",
     );
     if (format === "json") {
@@ -153,11 +179,14 @@ app.get("/history/:platform/:username", async (req, res) => {
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
 
-  logger.info({ platform: normalized, username, modes, months }, "fetching history");
+  logger.info(
+    { platform: normalized, username, modes, months },
+    "fetching history",
+  );
 
-  function historyCached(key) {
+  function historyCached(key: string) {
     const entry = cache.get(key);
-    if (!entry) return null;
+    if (!entry || !entry.data) return null;
     if (Date.now() > entry.expires) {
       cache.delete(key);
       return null;
@@ -168,18 +197,18 @@ app.get("/history/:platform/:username", async (req, res) => {
   try {
     // Fetch stats (for the title) + all history modes in parallel
     const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
-    let stats = getCached(statsCacheKey);
-    const statsPromise = stats
-      ? Promise.resolve(stats)
+    let cachedStats = getCached(statsCacheKey);
+    const statsPromise = cachedStats
+      ? Promise.resolve(cachedStats)
       : (async () => {
-        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-          stats = await fetchChessDotCom(username);
-        } else if (normalized === "lichess") {
-          stats = await fetchLichess(username);
-        }
-        if (stats) setCache(statsCacheKey, stats);
-        return stats;
-      })().catch(() => null); // non-critical — ignore errors
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            cachedStats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            cachedStats = await fetchLichess(username);
+          }
+          if (cachedStats) setCache(statsCacheKey, cachedStats);
+          return cachedStats;
+        })().catch(() => null); // non-critical — ignore errors
 
     // Fetch all requested modes in parallel, using per-mode cache keys
     const [resolvedStats, ...results] = await Promise.all([
@@ -188,7 +217,10 @@ app.get("/history/:platform/:username", async (req, res) => {
         const cacheKey = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
         let result = historyCached(cacheKey);
         if (!result) {
-          logger.debug({ platform: normalized, username, mode, months }, "cache miss — fetching history");
+          logger.debug(
+            { platform: normalized, username, mode, months },
+            "cache miss — fetching history",
+          );
           if (normalized === "chessdotcom" || normalized === "chesscommunity") {
             result = await fetchChessDotComHistory(username, mode, months);
           } else if (normalized === "lichess") {
@@ -198,11 +230,19 @@ app.get("/history/:platform/:username", async (req, res) => {
               error: `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
             });
           }
-          logger.debug({ platform: normalized, username, mode, points: result.points?.length ?? 0 }, "history fetched");
+          logger.debug(
+            {
+              platform: normalized,
+              username,
+              mode,
+              points: result.points?.length ?? 0,
+            },
+            "history fetched",
+          );
           cache.set(cacheKey, {
             data: result,
             expires: Date.now() + HISTORY_TTL,
-          });
+          } as any);
         }
         return result;
       }),
@@ -230,7 +270,14 @@ app.get("/history/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        modes,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "history error",
     );
     if (format === "json") {
@@ -276,35 +323,38 @@ app.get("/combined/:platform/:username", async (req, res) => {
   try {
     // Stats + all mode histories in parallel
     const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
-    let stats = getCached(statsCacheKey);
-    const statsPromise = stats
-      ? Promise.resolve(stats)
+    let combinedStats = getCached(statsCacheKey);
+    const statsPromise = combinedStats
+      ? Promise.resolve(combinedStats)
       : (async () => {
-        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-          stats = await fetchChessDotCom(username);
-        } else if (normalized === "lichess") {
-          stats = await fetchLichess(username);
-        } else {
-          const err = new Error(
-            `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-          );
-          err.status = 400;
-          throw err;
-        }
-        setCache(statsCacheKey, stats);
-        return stats;
-      })();
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            combinedStats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            combinedStats = await fetchLichess(username);
+          } else {
+            const err = new Error(
+              `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+            );
+            throw err;
+          }
+          setCache(statsCacheKey, combinedStats);
+          return combinedStats;
+        })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
-      let result = getCached(key);
+      const entry = cache.get(key);
+      let result = entry && Date.now() <= entry.expires ? entry.data : null;
       if (!result) {
         if (normalized === "chessdotcom" || normalized === "chesscommunity") {
           result = await fetchChessDotComHistory(username, mode, months);
         } else if (normalized === "lichess") {
           result = await fetchLichessHistory(username, mode, months);
         }
-        cache.set(key, { data: result, expires: Date.now() + HISTORY_TTL });
+        cache.set(key, {
+          data: result,
+          expires: Date.now() + HISTORY_TTL,
+        } as any);
       }
       return result;
     });
@@ -322,7 +372,14 @@ app.get("/combined/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        modes,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "combined error",
     );
     const { colors: ec } = resolveTheme(theme);
@@ -366,35 +423,38 @@ app.get("/blink/:platform/:username", async (req, res) => {
   try {
     // Stats + all mode histories in parallel
     const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
-    let stats = getCached(statsCacheKey);
-    const statsPromise = stats
-      ? Promise.resolve(stats)
+    let blinkStats = getCached(statsCacheKey);
+    const statsPromise = blinkStats
+      ? Promise.resolve(blinkStats)
       : (async () => {
-        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-          stats = await fetchChessDotCom(username);
-        } else if (normalized === "lichess") {
-          stats = await fetchLichess(username);
-        } else {
-          const err = new Error(
-            `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-          );
-          err.status = 400;
-          throw err;
-        }
-        setCache(statsCacheKey, stats);
-        return stats;
-      })();
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            blinkStats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            blinkStats = await fetchLichess(username);
+          } else {
+            const err = new Error(
+              `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+            );
+            throw err;
+          }
+          setCache(statsCacheKey, blinkStats);
+          return blinkStats;
+        })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
-      let result = getCached(key);
+      const entry = cache.get(key);
+      let result = entry && Date.now() <= entry.expires ? entry.data : null;
       if (!result) {
         if (normalized === "chessdotcom" || normalized === "chesscommunity") {
           result = await fetchChessDotComHistory(username, mode, months);
         } else if (normalized === "lichess") {
           result = await fetchLichessHistory(username, mode, months);
         }
-        cache.set(key, { data: result, expires: Date.now() + HISTORY_TTL });
+        cache.set(key, {
+          data: result,
+          expires: Date.now() + HISTORY_TTL,
+        } as any);
       }
       return result;
     });
@@ -406,7 +466,7 @@ app.get("/blink/:platform/:username", async (req, res) => {
 
     const svg = renderBlink({
       stats: resolvedStats,
-      username: resolvedStats.username ?? username,
+      username: resolvedStats?.username ?? username,
       platform: normalized === "lichess" ? "Lichess" : "Chess.com",
       mode: historySeries.map((r) => r.mode),
       points: historySeries.map((r) => r.points),
@@ -421,7 +481,14 @@ app.get("/blink/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        modes,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "blink error",
     );
     const { colors: ec } = resolveTheme(theme);
@@ -481,5 +548,8 @@ app.get("/", (_req, res) => {
   });
 });
 app.listen(PORT, () => {
-  logger.info({ version, port: PORT, defaultTheme: DEFAULT_THEME }, "server started");
+  logger.info(
+    { version, port: PORT, defaultTheme: DEFAULT_THEME },
+    "server started",
+  );
 });
