@@ -140,9 +140,6 @@ export function statsCard(
     })
     .filter((r) => r.key in stats);
 
-  console.log(modes);
-  console.log(stats);
-
   const usernameW = esc(stats.username).length * 8;
   const titleBadgeW = stats.title ? stats.title.length * 7 + 11 : 0;
   const titleBadgeX = 30 + usernameW + FS_USERNAME;

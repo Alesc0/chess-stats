@@ -1,102 +1,45 @@
-// ── Rating snapshots ──────────────────────────────────────────────────────────
-export interface ChessModeRatingLast {
-  rating: number;
-  date: number; // unix timestamp
-  rd: number;
-}
+// ── Chess.com API response types (trimmed to what we actually consume) ────────
 
-export interface ChessModeRatingBest {
-  rating: number;
-  date: number;
-  game: string; // URL
-}
-
-// ── Win/loss/draw record ──────────────────────────────────────────────────────
+// ── Per-mode stats block ──────────────────────────────────────────────────────
 export interface ChessModeRecord {
-  win: number;
+  win:  number;
   loss: number;
   draw: number;
 }
 
-// ── Per-mode stats block ──────────────────────────────────────────────────────
 export interface ChessModeStats {
-  last: ChessModeRatingLast;
-  best?: ChessModeRatingBest;
+  last:   { rating: number };
   record: ChessModeRecord;
-}
-
-// ── Tactics ───────────────────────────────────────────────────────────────────
-export interface ChessTacticsEntry {
-  rating: number;
-  date: number;
-}
-
-export interface ChessTactics {
-  highest: ChessTacticsEntry;
-  lowest: ChessTacticsEntry;
 }
 
 // ── Full stats response ───────────────────────────────────────────────────────
 export interface ChessDotComStatsResponse {
   chess_bullet?: ChessModeStats;
-  chess_blitz?: ChessModeStats;
-  chess_rapid?: ChessModeStats;
-  tactics?: ChessTactics;
-  puzzle_rush?: Record<string, unknown>;
+  chess_blitz?:  ChessModeStats;
+  chess_rapid?:  ChessModeStats;
+  tactics?:      { highest?: { rating: number } };
 }
 
 // ── Public profile ────────────────────────────────────────────────────────────
 export interface ChessDotComProfile {
-  avatar?: string | null;
-  player_id?: number;
-  "@id"?: string;
-  url?: string;
-  name?: string | null;
-  title?: string | null;
-  username: string;
-  followers?: number;
-  country?: string; // URL to country resource
-  location?: string | null;
-  last_online?: number; // unix timestamp
-  joined?: number; // unix timestamp
-  status?: string; // e.g. "basic"
-  is_streamer?: boolean;
-  twitch_url?: string | null;
-  verified?: boolean;
-  league?: string | null;
-  streaming_platforms?: Array<{ type: string; channel_url: string }>;
+  username:  string;
+  title?:    string | null;
+  country?:  string;        // URL to country resource
+  avatar?:   string | null;
 }
 
 // ── Game / recent games response ─────────────────────────────────────────────
-export interface ChessDotComPlayerSummary {
-  rating?: number;
-  result?: string;
-  "@id"?: string;
+export interface ChessDotComPlayerResult {
   username: string;
-  uuid?: string;
-}
-
-export interface ChessDotComAccuracies {
-  white?: number;
-  black?: number;
+  result:   string;
+  rating:   number;
 }
 
 export interface ChessDotComGame {
-  url: string;
-  pgn: string;
-  time_control?: string;
-  end_time?: number;
-  rated?: boolean;
-  tcn?: string;
-  uuid?: string;
-  initial_setup?: string;
-  fen?: string;
+  white:       ChessDotComPlayerResult;
+  black:       ChessDotComPlayerResult;
+  end_time?:   number;
   time_class?: string;
-  rules?: string;
-  white: ChessDotComPlayerSummary;
-  black: ChessDotComPlayerSummary;
-  eco?: string;
-  accuracies?: ChessDotComAccuracies;
 }
 
 export interface ChessDotComGamesResponse {

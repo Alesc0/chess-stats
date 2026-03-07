@@ -13,6 +13,7 @@ import { renderChart } from "./render/chart";
 import { renderCombined } from "./render/combined";
 import { statsCard } from "./render/stats";
 import { resolveTheme, THEMES } from "./render/themes";
+import { ChessStats, RecentGame } from "./types";
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
@@ -41,23 +42,33 @@ app.use(
 );
 
 // Simple in-memory cache: key → { data, expires }
-const cache = new Map<string, { data: any; expires: number }>();
+const cache = new Map<
+  string,
+  {
+    stats: ChessStats;
+    expires: number;
+    data?: any; // for history cache entries
+  }
+>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-function getCached(key: string) {
+function getCached(key: string): ChessStats | null {
   const entry = cache.get(key);
-  if (!entry) return null;
+  if (!entry || !entry.stats) return null;
   if (Date.now() > entry.expires) {
     cache.delete(key);
     logger.debug({ key }, "cache expired");
     return null;
   }
   logger.debug({ key }, "cache hit");
-  return entry.data;
+  return entry.stats;
 }
 
-function setCache(key: string, data: any) {
-  cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+function setCache(key: string, stats: ChessStats) {
+  cache.set(key, {
+    stats,
+    expires: Date.now() + CACHE_TTL_MS,
+  });
   logger.debug({ key, ttl_ms: CACHE_TTL_MS }, "cache set");
 }
 
@@ -87,7 +98,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
   const cacheKey = `${normalized}:${username.toLowerCase()}`;
 
   try {
-    let stats: any = getCached(cacheKey);
+    let stats = getCached(cacheKey);
 
     if (!stats) {
       logger.info({ platform: normalized, username }, "fetching stats");
@@ -173,9 +184,9 @@ app.get("/history/:platform/:username", async (req, res) => {
     "fetching history",
   );
 
-  function historyCached(key) {
+  function historyCached(key: string) {
     const entry = cache.get(key);
-    if (!entry) return null;
+    if (!entry || !entry.data) return null;
     if (Date.now() > entry.expires) {
       cache.delete(key);
       return null;
@@ -186,17 +197,17 @@ app.get("/history/:platform/:username", async (req, res) => {
   try {
     // Fetch stats (for the title) + all history modes in parallel
     const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
-    let stats = getCached(statsCacheKey);
-    const statsPromise = stats
-      ? Promise.resolve(stats)
+    let cachedStats = getCached(statsCacheKey);
+    const statsPromise = cachedStats
+      ? Promise.resolve(cachedStats)
       : (async () => {
           if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-            stats = await fetchChessDotCom(username);
+            cachedStats = await fetchChessDotCom(username);
           } else if (normalized === "lichess") {
-            stats = await fetchLichess(username);
+            cachedStats = await fetchLichess(username);
           }
-          if (stats) setCache(statsCacheKey, stats);
-          return stats;
+          if (cachedStats) setCache(statsCacheKey, cachedStats);
+          return cachedStats;
         })().catch(() => null); // non-critical — ignore errors
 
     // Fetch all requested modes in parallel, using per-mode cache keys
@@ -231,7 +242,7 @@ app.get("/history/:platform/:username", async (req, res) => {
           cache.set(cacheKey, {
             data: result,
             expires: Date.now() + HISTORY_TTL,
-          });
+          } as any);
         }
         return result;
       }),
@@ -312,34 +323,38 @@ app.get("/combined/:platform/:username", async (req, res) => {
   try {
     // Stats + all mode histories in parallel
     const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
-    let stats = getCached(statsCacheKey);
-    const statsPromise = stats
-      ? Promise.resolve(stats)
+    let combinedStats = getCached(statsCacheKey);
+    const statsPromise = combinedStats
+      ? Promise.resolve(combinedStats)
       : (async () => {
           if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-            stats = await fetchChessDotCom(username);
+            combinedStats = await fetchChessDotCom(username);
           } else if (normalized === "lichess") {
-            stats = await fetchLichess(username);
+            combinedStats = await fetchLichess(username);
           } else {
             const err = new Error(
               `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
             );
             throw err;
           }
-          setCache(statsCacheKey, stats);
-          return stats;
+          setCache(statsCacheKey, combinedStats);
+          return combinedStats;
         })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
-      let result = getCached(key);
+      const entry = cache.get(key);
+      let result = entry && Date.now() <= entry.expires ? entry.data : null;
       if (!result) {
         if (normalized === "chessdotcom" || normalized === "chesscommunity") {
           result = await fetchChessDotComHistory(username, mode, months);
         } else if (normalized === "lichess") {
           result = await fetchLichessHistory(username, mode, months);
         }
-        cache.set(key, { data: result, expires: Date.now() + HISTORY_TTL });
+        cache.set(key, {
+          data: result,
+          expires: Date.now() + HISTORY_TTL,
+        } as any);
       }
       return result;
     });
@@ -408,34 +423,38 @@ app.get("/blink/:platform/:username", async (req, res) => {
   try {
     // Stats + all mode histories in parallel
     const statsCacheKey = `${normalized}:${username.toLowerCase()}`;
-    let stats = getCached(statsCacheKey);
-    const statsPromise = stats
-      ? Promise.resolve(stats)
+    let blinkStats = getCached(statsCacheKey);
+    const statsPromise = blinkStats
+      ? Promise.resolve(blinkStats)
       : (async () => {
           if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-            stats = await fetchChessDotCom(username);
+            blinkStats = await fetchChessDotCom(username);
           } else if (normalized === "lichess") {
-            stats = await fetchLichess(username);
+            blinkStats = await fetchLichess(username);
           } else {
             const err = new Error(
               `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
             );
             throw err;
           }
-          setCache(statsCacheKey, stats);
-          return stats;
+          setCache(statsCacheKey, blinkStats);
+          return blinkStats;
         })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
-      let result = getCached(key);
+      const entry = cache.get(key);
+      let result = entry && Date.now() <= entry.expires ? entry.data : null;
       if (!result) {
         if (normalized === "chessdotcom" || normalized === "chesscommunity") {
           result = await fetchChessDotComHistory(username, mode, months);
         } else if (normalized === "lichess") {
           result = await fetchLichessHistory(username, mode, months);
         }
-        cache.set(key, { data: result, expires: Date.now() + HISTORY_TTL });
+        cache.set(key, {
+          data: result,
+          expires: Date.now() + HISTORY_TTL,
+        } as any);
       }
       return result;
     });
@@ -447,7 +466,7 @@ app.get("/blink/:platform/:username", async (req, res) => {
 
     const svg = renderBlink({
       stats: resolvedStats,
-      username: resolvedStats.username ?? username,
+      username: resolvedStats?.username ?? username,
       platform: normalized === "lichess" ? "Lichess" : "Chess.com",
       mode: historySeries.map((r) => r.mode),
       points: historySeries.map((r) => r.points),
