@@ -1,6 +1,6 @@
-import { statsCard } from "./stats.js";
+import { ChessStats, MODE } from "../types.js";
 import { renderChart } from "./chart.js";
-import { Style, SVG } from "@svgdotjs/svg.js";
+import { statsCard } from "./stats.js";
 
 const FRAME_SEC = 5;
 const W = 600;
@@ -41,13 +41,11 @@ export function svgToGroup(
 }
 
 export function renderBlink(opts: {
-  stats: any;
+  stats: ChessStats;
   username: string;
   platform: string;
-  mode: string | string[];
-  points:
-    | Array<{ date: Date; rating: number }>
-    | Array<Array<{ date: Date; rating: number }>>;
+  modes: MODE[];
+  points: Array<{ date: Date; rating: number }>;
   months?: number;
   themeName?: string;
 }): string {
@@ -55,24 +53,24 @@ export function renderBlink(opts: {
     stats,
     username,
     platform,
-    mode,
+    modes,
     points,
     months = 6,
     themeName,
   } = opts;
 
-  const cardSvg = statsCard(stats, themeName);
+  const cardStats = statsCard(stats, themeName);
   const chartSvg = renderChart({
     username,
     platform,
-    mode,
+    modes,
     points,
     months,
     themeName,
     title: stats.title ?? null,
   });
 
-  const cardGroup = svgToGroup(cardSvg, { className: "blink-card" });
+  const statsGroup = svgToGroup(cardStats, { className: "blink-card" });
   const chartGroup = svgToGroup(chartSvg, { className: "blink-chart" });
 
   const totalCycle = FRAME_SEC * 2;
@@ -83,27 +81,6 @@ export function renderBlink(opts: {
   role="img" aria-label="Chess stats blink view for ${username}">
 
   <title>Chess Stats – ${username} (blink)</title>
-
-  <style>
-    @keyframes showCard {
-      0%                                 { opacity: 1; }
-      ${pct}%                            { opacity: 1; }
-      ${(parseFloat(pct) + 2).toFixed(1)}%  { opacity: 0; }
-      ${(100 - 2).toFixed(1)}%              { opacity: 0; }
-      100%                               { opacity: 1; }
-    }
-    @keyframes showChart {
-      0%                                 { opacity: 0; }
-      ${pct}%                            { opacity: 0; }
-      ${(parseFloat(pct) + 2).toFixed(1)}%  { opacity: 1; }
-      ${(100 - 2).toFixed(1)}%              { opacity: 1; }
-      100%                               { opacity: 0; }
-    }
-    .blink-card  { animation: showCard  ${totalCycle}s ease-in-out infinite; }
-    .blink-chart { animation: showChart ${totalCycle}s ease-in-out infinite; }
-  </style>
-
-  ${cardGroup}
   ${chartGroup}
 
 </svg>`;

@@ -1,6 +1,7 @@
+import { MODE } from "../types.js";
 import { resolveTheme, type ThemeColors } from "./themes.js";
-import { esc, fmt, lerp, platformUrl } from "./utils.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
+import { esc, fmt, lerp, platformUrl } from "./utils.js";
 
 const W = 650;
 const H = 300;
@@ -154,6 +155,7 @@ export function renderCombined(
     mode: string;
     points: Array<{ date: Date; rating: number }>;
   }>,
+  modes: MODE[],
   themeName?: string,
 ): string {
   const { colors: C } = resolveTheme(themeName);

@@ -1,7 +1,9 @@
-import { resolveTheme, type ThemeColors } from "./themes.js";
-import { esc, fmt } from "./utils.js";
-import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
 import { renderHeader } from "./header.js";
+import { resolveTheme, type ThemeColors } from "./themes.js";
+import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
+import { esc, fmt } from "./utils.js";
+import { ChessStats, MODE } from "../types.js";
+
 const W = 550;
 const H = 250;
 const HEADER_H = 52;
@@ -120,21 +122,26 @@ function statCol(
 }
 
 export function statsCard(
-  stats,
+  stats: ChessStats,
   themeName?: string,
-  modes: string[] = ["rapid"],
+  modes: MODE[] = [MODE.bullet, MODE.blitz, MODE.rapid],
 ): string {
   const { colors: C } = resolveTheme(themeName);
 
   const sortedRatingRows = modes
-    .map((mode, i) => {
+    .map((mode: MODE, i: number) => {
       const key = mode.toLowerCase();
+      const ySpan =
+        modes.length > 1
+          ? (RATING_Y_END - RATING_Y_START) / (modes.length - 1)
+          : 0;
       return {
         key,
         label: mode.toUpperCase(),
         y:
-          RATING_Y_START +
-          i * ((RATING_Y_END - RATING_Y_START) / (modes.length - 1)),
+          modes.length === 1
+            ? (RATING_Y_START + RATING_Y_END) / 2
+            : RATING_Y_START + i * ySpan,
       };
     })
     .filter((r) => r.key in stats);
@@ -221,7 +228,7 @@ export function statsCard(
 
   <rect width="${W}" height="${H}" rx="12" fill="${C.bg}" stroke="${C.border}" stroke-width="1"/>
 
-  ${renderHeader({ ...stats, themeName, width: W, height: H })}
+  ${renderHeader({ ...stats, themeName, width: W })}
 
   <text x="22" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RATINGS</text>
   

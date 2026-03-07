@@ -2,18 +2,19 @@ import express from "express";
 import pinoHttp from "pino-http";
 import { version } from "../package.json";
 import logger from "./logger";
-import { fetchChessDotCom } from "./providers/chessdotcom";
 import {
+  fetchChessDotCom,
   fetchChessDotComHistory,
-  fetchLichessHistory,
-} from "./providers/history";
-import { fetchLichess } from "./providers/lichess";
+} from "./providers/chessdotcom";
+import { fetchLichess, fetchLichessHistory } from "./providers/lichess";
 import { renderBlink } from "./render/blink";
 import { renderChart } from "./render/chart";
 import { renderCombined } from "./render/combined";
 import { statsCard } from "./render/stats";
 import { resolveTheme, THEMES } from "./render/themes";
-import { ChessStats, RecentGame } from "./types";
+import { errorSvg, getModes } from "./render/utils";
+import { ChessStats, MODE } from "./types";
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
@@ -86,13 +87,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
   const format = req.query.format ?? "svg";
   const theme = (req.query.theme as string) ?? DEFAULT_THEME;
-  const VALID_MODES = new Set(["bullet", "blitz", "rapid", "puzzle"]);
-  const modes = req.query.modes
-    ? (req.query.modes as string)
-        .split(",")
-        .map((m) => m.trim().toLowerCase())
-        .filter((m) => VALID_MODES.has(m))
-    : ["bullet", "blitz", "rapid"];
+  const modes = getModes(req.query.modes);
 
   const normalized = platform.toLowerCase().replace(/[\.\-]/g, "");
   const cacheKey = `${normalized}:${username.toLowerCase()}`;
@@ -140,12 +135,10 @@ app.get("/stats/:platform/:username", async (req, res) => {
     }
     // Return an SVG error card
     const { colors: ec } = resolveTheme(theme);
-    const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="420" height="80" viewBox="0 0 420 80">
-      <rect width="420" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
-      <text x="20" y="30" fill="${ec.loss}" font-size="13" font-family="monospace" font-weight="bold">Error</text>
-      <text x="20" y="52" fill="${ec.muted}" font-size="11" font-family="monospace">${err.message.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
-    </svg>`;
-    res.status(status).set("Content-Type", "image/svg+xml").send(errorSvg);
+    res
+      .status(status)
+      .set("Content-Type", "image/svg+xml")
+      .send(errorSvg(err.message, ec));
   }
 });
 
@@ -163,21 +156,16 @@ app.get("/stats/:platform/:username", async (req, res) => {
  */
 app.get("/history/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
-
-  // Accept comma-separated modes or multiple ?mode= params
-  const rawMode = (req.query.mode as string) ?? "blitz";
-  const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
-    .flatMap((m) => m.split(","))
-    .map((m) => m.trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 4); // cap at 4 modes
+  const modes = getModes(req.query.modes);
 
   const months = Math.min(
     12,
     Math.max(1, parseInt(req.query.months as string, 10) || 6),
   );
+
   const format = (req.query.format as string) ?? "svg";
   const theme = (req.query.theme as string) ?? DEFAULT_THEME;
+  const { colors: C } = resolveTheme(theme);
 
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
@@ -259,7 +247,7 @@ app.get("/history/:platform/:username", async (req, res) => {
     const svg = renderChart({
       username,
       platform: normalized === "lichess" ? "Lichess" : "Chess.com",
-      mode: results.map((r) => r.mode),
+      modes: results.map((r) => r.mode),
       points: results.map((r) => r.points),
       months,
       themeName: theme,
@@ -286,13 +274,10 @@ app.get("/history/:platform/:username", async (req, res) => {
     if (format === "json") {
       return res.status(status).json({ error: err.message });
     }
-    const { colors: ec } = resolveTheme(theme);
-    const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="80" viewBox="0 0 600 80">
-      <rect width="600" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
-      <text x="20" y="30" fill="${ec.loss}" font-size="13" font-family="monospace" font-weight="bold">Error</text>
-      <text x="20" y="52" fill="${ec.muted}" font-size="11" font-family="monospace">${err.message.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
-    </svg>`;
-    res.status(status).set("Content-Type", "image/svg+xml").send(errorSvg);
+    res
+      .status(status)
+      .set("Content-Type", "image/svg+xml")
+      .send(errorSvg(err.message, C));
   }
 });
 
@@ -309,20 +294,14 @@ app.get("/history/:platform/:username", async (req, res) => {
  */
 app.get("/combined/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
-
-  const rawMode = (req.query.mode as string) ?? "blitz";
-  const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
-    .flatMap((m) => m.split(","))
-    .map((m) => m.trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 4);
+  const modes = getModes(req.query.modes);
 
   const months = Math.min(
     12,
     Math.max(1, parseInt(req.query.months as string, 10) || 6),
   );
   const theme = (req.query.theme as string) ?? DEFAULT_THEME;
-
+  const { colors: C } = resolveTheme(theme);
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
 
@@ -370,7 +349,7 @@ app.get("/combined/:platform/:username", async (req, res) => {
       ...historyPromises,
     ]);
 
-    const svg = renderCombined(resolvedStats, historySeries, theme);
+    const svg = renderCombined(resolvedStats, historySeries, modes, theme);
     res
       .set("Content-Type", "image/svg+xml")
       .set("Cache-Control", `public, max-age=${HISTORY_TTL / 1000}`)
@@ -388,13 +367,10 @@ app.get("/combined/:platform/:username", async (req, res) => {
       },
       "combined error",
     );
-    const { colors: ec } = resolveTheme(theme);
-    const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="80" viewBox="0 0 480 80">
-      <rect width="480" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
-      <text x="20" y="30" fill="${ec.loss}" font-size="13" font-family="monospace" font-weight="bold">Error</text>
-      <text x="20" y="52" fill="${ec.muted}" font-size="11" font-family="monospace">${err.message.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
-    </svg>`;
-    res.status(status).set("Content-Type", "image/svg+xml").send(errorSvg);
+    res
+      .status(status)
+      .set("Content-Type", "image/svg+xml")
+      .send(errorSvg(err.message, C));
   }
 });
 
@@ -412,19 +388,14 @@ app.get("/combined/:platform/:username", async (req, res) => {
  */
 app.get("/blink/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
-
-  const rawMode = (req.query.mode as string) ?? "blitz";
-  const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
-    .flatMap((m) => m.split(","))
-    .map((m) => m.trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 4);
+  const modes = getModes(req.query.modes);
 
   const months = Math.min(
     12,
     Math.max(1, parseInt(req.query.months as string, 10) || 6),
   );
   const theme = (req.query.theme as string) ?? DEFAULT_THEME;
+  const { colors: C } = resolveTheme(theme);
 
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
@@ -477,7 +448,7 @@ app.get("/blink/:platform/:username", async (req, res) => {
       stats: resolvedStats,
       username: resolvedStats?.username ?? username,
       platform: normalized === "lichess" ? "Lichess" : "Chess.com",
-      mode: historySeries.map((r) => r.mode),
+      modes: historySeries.map((r) => r.mode),
       points: historySeries.map((r) => r.points),
       months,
       themeName: theme,
@@ -500,13 +471,10 @@ app.get("/blink/:platform/:username", async (req, res) => {
       },
       "blink error",
     );
-    const { colors: ec } = resolveTheme(theme);
-    const errorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="80" viewBox="0 0 600 80">
-      <rect width="600" height="80" rx="10" fill="${ec.bg}" stroke="${ec.loss}33" stroke-width="1"/>
-      <text x="20" y="30" fill="${ec.loss}" font-size="13" font-family="monospace" font-weight="bold">Error</text>
-      <text x="20" y="52" fill="${ec.muted}" font-size="11" font-family="monospace">${err.message.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
-    </svg>`;
-    res.status(status).set("Content-Type", "image/svg+xml").send(errorSvg);
+    res
+      .status(status)
+      .set("Content-Type", "image/svg+xml")
+      .send(errorSvg(err.message, C));
   }
 });
 

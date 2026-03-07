@@ -10,6 +10,15 @@ const FS_COUNTRY = 10;
 const FS_PLATFORM = 12;
 const FS_USERNAME = 19;
 
+export function platformPill(platform: string, C: any, width: number): string {
+  return `
+    // platform badge
+    
+    <rect x="${width - 92}" y="19" width="${platform.length * 8}" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
+
+    <text x="${width - 92 + (platform.length * 8) / 2}" y="32" text-anchor="middle" fill="${C.muted}" font-size="${FS_PLATFORM}" font-family="sans-serif">${esc(platform)}</text>`;
+}
+
 function computeUsernameDisplayWidth(name: string): number {
   const len = name ? esc(name).length : 0;
   const minChars = 5;
@@ -70,7 +79,6 @@ export function renderHeader({
   platform,
   themeName,
   width,
-  height,
 }: {
   username: string;
   title: string | null;
@@ -78,7 +86,6 @@ export function renderHeader({
   platform: string;
   themeName: string;
   width: number;
-  height: number;
 }): string {
   const { colors: C } = resolveTheme(themeName);
   const usernameDisplayW = computeUsernameDisplayWidth(username);
@@ -141,14 +148,8 @@ export function renderHeader({
         : ""
     }
   
-    ${
-      country
-        ? `
-    <text x="${countryX}" y="33" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(country)}</text>`
-        : ""
-    }
-  
-    <rect x="${width - 92}" y="19" width="${platform.length * 8}" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
-    <text x="${width - 55}" y="32" text-anchor="middle" fill="${C.muted}" font-size="${FS_PLATFORM}" font-family="sans-serif">${esc(platform)}</text>
+    ${countryMarkup}
+    
+    ${platformPill(platform, C, width)}
   `;
 }
