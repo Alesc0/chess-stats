@@ -85,7 +85,7 @@ function setCache(key: string, stats: ChessStats) {
 app.get("/stats/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
   const format = req.query.format ?? "svg";
-  const theme = req.query.theme ?? DEFAULT_THEME;
+  const theme = (req.query.theme as string) ?? DEFAULT_THEME;
   const VALID_MODES = new Set(["bullet", "blitz", "rapid", "puzzle"]);
   const modes = req.query.modes
     ? (req.query.modes as string)
@@ -165,16 +165,19 @@ app.get("/history/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
 
   // Accept comma-separated modes or multiple ?mode= params
-  const rawMode = req.query.mode ?? "blitz";
+  const rawMode = (req.query.mode as string) ?? "blitz";
   const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
     .flatMap((m) => m.split(","))
     .map((m) => m.trim().toLowerCase())
     .filter(Boolean)
     .slice(0, 4); // cap at 4 modes
 
-  const months = Math.min(12, Math.max(1, parseInt(req.query.months, 10) || 6));
-  const format = req.query.format ?? "svg";
-  const theme = req.query.theme ?? DEFAULT_THEME;
+  const months = Math.min(
+    12,
+    Math.max(1, parseInt(req.query.months as string, 10) || 6),
+  );
+  const format = (req.query.format as string) ?? "svg";
+  const theme = (req.query.theme as string) ?? DEFAULT_THEME;
 
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
@@ -307,15 +310,18 @@ app.get("/history/:platform/:username", async (req, res) => {
 app.get("/combined/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
 
-  const rawMode = req.query.mode ?? "blitz";
+  const rawMode = (req.query.mode as string) ?? "blitz";
   const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
     .flatMap((m) => m.split(","))
     .map((m) => m.trim().toLowerCase())
     .filter(Boolean)
     .slice(0, 4);
 
-  const months = Math.min(12, Math.max(1, parseInt(req.query.months, 10) || 6));
-  const theme = req.query.theme ?? DEFAULT_THEME;
+  const months = Math.min(
+    12,
+    Math.max(1, parseInt(req.query.months as string, 10) || 6),
+  );
+  const theme = (req.query.theme as string) ?? DEFAULT_THEME;
 
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
@@ -407,15 +413,18 @@ app.get("/combined/:platform/:username", async (req, res) => {
 app.get("/blink/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
 
-  const rawMode = req.query.mode ?? "blitz";
+  const rawMode = (req.query.mode as string) ?? "blitz";
   const modes = (Array.isArray(rawMode) ? rawMode : [rawMode])
     .flatMap((m) => m.split(","))
     .map((m) => m.trim().toLowerCase())
     .filter(Boolean)
     .slice(0, 4);
 
-  const months = Math.min(12, Math.max(1, parseInt(req.query.months, 10) || 6));
-  const theme = req.query.theme ?? DEFAULT_THEME;
+  const months = Math.min(
+    12,
+    Math.max(1, parseInt(req.query.months as string, 10) || 6),
+  );
+  const theme = (req.query.theme as string) ?? DEFAULT_THEME;
 
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;

@@ -1,10 +1,7 @@
 import { resolveTheme, type ThemeColors } from "./themes.js";
 import { esc, fmt } from "./utils.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
-import fs from "fs";
-import path from "path";
-import PinoHttp from "pino-http";
-
+import { renderHeader } from "./header.js";
 const W = 550;
 const H = 250;
 const HEADER_H = 52;
@@ -17,10 +14,6 @@ const DONUT_CY = 135;
 const DONUT_R = 44;
 const DONUT_SW = 15;
 const RATING_REF = 3200;
-const FS_USERNAME = 19;
-const FS_TITLE_BADGE = 12;
-const FS_COUNTRY = 10;
-const FS_PLATFORM = 12;
 const FS_SECTION_LBL = 14;
 const FS_ROW_LABEL = 16;
 const FS_ROW_VALUE = 16;
@@ -102,9 +95,11 @@ function ratingRow({
   return `
   <circle cx="${RATINGS_X}" cy="${y - 4}" r="3" fill="${hasVal ? color : C.border}"/>
   <text x="${RATINGS_X + 10}" y="${y}" fill="${C.muted}" font-size="${FS_ROW_LABEL}" font-family="sans-serif">${label}</text>
+  
   <text x="${BAR_X - 8}" y="${y}" text-anchor="end"
         fill="${hasVal ? color : C.muted}" font-size="${FS_ROW_VALUE}" font-family="monospace"
         font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>
+
   <rect x="${BAR_X}" y="${y - 7}" width="${BAR_W}" height="5" rx="2" fill="${C.border}" opacity="0.35"/>
   ${hasVal ? `<rect x="${BAR_X}" y="${y - 7}" width="${fillW}" height="5" rx="2" fill="url(#${gradId})"/>` : ""}`;
 }
@@ -143,90 +138,6 @@ export function statsCard(
       };
     })
     .filter((r) => r.key in stats);
-
-  function computeUsernameDisplayWidth(name: string): number {
-    const len = name ? esc(name).length : 0;
-    const minChars = 5;
-    const maxChars = 25;
-    const minMul = 6;
-    const maxMul = 9.8;
-    if (len <= minChars) return Math.round(len * minMul);
-    if (len >= maxChars) return Math.round(len * maxMul);
-    const t = (len - minChars) / (maxChars - minChars);
-    // stronger ease-out so multipliers ramp up faster around ~9-10 chars
-    const eased = 1 - Math.pow(1 - t, 4);
-    const mul = minMul + eased * (maxMul - minMul);
-    return Math.round(len * mul);
-  }
-
-  const usernameDisplayW = computeUsernameDisplayWidth(stats.username);
-  const titleBadgeW = stats.title ? stats.title.length * 7 + 11 : 0;
-  const titleBadgeX = 30 + usernameDisplayW + FS_USERNAME;
-  const countryX = titleBadgeX + (stats.title ? titleBadgeW + 8 : 0);
-
-  function loadFlagInline(
-    code: string,
-    x: number,
-    y: number,
-    w = 18,
-    h = 12,
-  ): string {
-    try {
-      const codeLc = code.toLowerCase();
-      const p = path.resolve(
-        process.cwd(),
-        "node_modules",
-        "flag-icons",
-        "flags",
-        "4x3",
-        `${codeLc}.svg`,
-      );
-      if (!fs.existsSync(p)) return "";
-      let svg = fs.readFileSync(p, "utf8");
-      svg = svg
-        .replace(/<\?xml[\s\S]*?\?>\s*/g, "")
-        .replace(/<!DOCTYPE[\s\S]*?>\s*/g, "");
-      // remove explicit width/height attributes but avoid matching inside other names like "stroke-width"
-      // keep the leading whitespace or '<' so tag spacing remains valid
-      svg = svg.replace(
-        /([\s<])(?:width|height)=("[^"]*"|'[^']*'|[^\s>]+)/gi,
-        "$1",
-      );
-      svg = svg.replace(
-        /<svg/,
-        `<svg x="${x}" y="${y}" width="${w}" height="${h}"`,
-      );
-      return svg;
-    } catch (err) {
-      return "";
-    }
-  }
-
-  const countryFlagMarkup = (() => {
-    if (!stats.country || typeof stats.country !== "string") return "";
-    const code = stats.country.length === 2 ? stats.country : null;
-    if (!code) return "";
-    let flagInline = loadFlagInline(code, countryX, 22, 18, 14);
-    if (!flagInline) {
-      PinoHttp().logger.warn(
-        `Could not load flag for country code "${code}". Make sure "flag-icons" package is installed and the code is correct.`,
-      );
-      return "";
-    }
-    return flagInline;
-  })();
-
-  const countryMarkup = stats.country
-    ? countryFlagMarkup
-      ? `${countryFlagMarkup}\n  <text x="${countryX + 22}" y="32" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(
-          typeof stats.country === "string" && stats.country.length === 2
-            ? stats.country.toUpperCase()
-            : stats.country,
-        )}</text>`
-      : `\n  <text x="${countryX}" y="32" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(
-          stats.country,
-        )}</text>`
-    : "";
 
   const wins = stats.wins ?? 0;
   const losses = stats.losses ?? 0;
@@ -289,10 +200,7 @@ export function statsCard(
   <defs>
     ${snow.defs}
     ${glow.defs}
-    <linearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"  stop-color="${C.accent}" stop-opacity="0.15"/>
-      <stop offset="70%" stop-color="${C.accent}" stop-opacity="0"/>
-    </linearGradient>
+    
     <linearGradient id="ratingBarGrad_bullet" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%"   stop-color="${C.bullet}"/>
       <stop offset="100%" stop-color="${C.bullet}" stop-opacity="0.45"/>
@@ -312,30 +220,13 @@ export function statsCard(
   </defs>
 
   <rect width="${W}" height="${H}" rx="12" fill="${C.bg}" stroke="${C.border}" stroke-width="1"/>
-  <clipPath id="hdrClip"><rect width="${W}" height="${HEADER_H}" rx="12"/></clipPath>
-  <rect clip-path="url(#hdrClip)" width="${W}" height="${HEADER_H}" fill="url(#hdrGrad)"/>
-  <rect x="0" y="9" width="3" height="${HEADER_H - 18}" rx="1.5" fill="${C.accent}"/>
-  <line x1="0" y1="${HEADER_H}" x2="${W}" y2="${HEADER_H}" stroke="${C.border}" stroke-width="1"/>
 
-  <text x="22" y="35" fill="${C.text}" font-size="${FS_USERNAME}" font-family="monospace" font-weight="bold" letter-spacing="0.3">${esc(stats.username)}</text>
-
-  ${
-    stats.title
-      ? `
-  <rect x="${titleBadgeX}" y="20" width="${titleBadgeW}" height="18" rx="5"
-        fill="${C.titleBadgeBg}" stroke="${C.titleBadgeBorder}" stroke-width="1"/>
-  <text x="${titleBadgeX + titleBadgeW / 2}" y="33" text-anchor="middle"
-        fill="${C.titleBadgeText}" font-size="${FS_TITLE_BADGE}" font-family="monospace" font-weight="bold">${esc(stats.title)}</text>`
-      : ""
-  }
-
-  ${countryMarkup}
-
-  <rect x="${W - 92}" y="19" width="${stats.platform.length * 8}" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
-  <text x="${W - 55}" y="32" text-anchor="middle" fill="${C.muted}" font-size="${FS_PLATFORM}" font-family="sans-serif">${esc(stats.platform)}</text>
+  ${renderHeader({ ...stats, themeName, width: W, height: H })}
 
   <text x="22" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RATINGS</text>
+  
   <text x="${DIVIDER_X + 10}" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RECORD</text>
+
   <text x="${DIVIDER_X + COL_W * 2}" y="70" fill="${C.muted}" font-size="${FS_SECTION_GAMES}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
 
   <line x1="10" y1="78" x2="${DIVIDER_X - 10}" y2="75" stroke="${C.border}" stroke-width="1" opacity="0.6"/>
