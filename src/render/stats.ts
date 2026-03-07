@@ -1,6 +1,10 @@
 import { resolveTheme, type ThemeColors } from "./themes.js";
 import { esc, fmt } from "./utils.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
+import fs from "fs";
+import path from "path";
+import PinoHttp from "pino-http";
+
 const W = 550;
 const H = 250;
 const HEADER_H = 52;
@@ -140,10 +144,89 @@ export function statsCard(
     })
     .filter((r) => r.key in stats);
 
-  const usernameW = esc(stats.username).length * 8;
+  function computeUsernameDisplayWidth(name: string): number {
+    const len = name ? esc(name).length : 0;
+    const minChars = 5;
+    const maxChars = 25;
+    const minMul = 6;
+    const maxMul = 9.8;
+    if (len <= minChars) return Math.round(len * minMul);
+    if (len >= maxChars) return Math.round(len * maxMul);
+    const t = (len - minChars) / (maxChars - minChars);
+    // stronger ease-out so multipliers ramp up faster around ~9-10 chars
+    const eased = 1 - Math.pow(1 - t, 4);
+    const mul = minMul + eased * (maxMul - minMul);
+    return Math.round(len * mul);
+  }
+
+  const usernameDisplayW = computeUsernameDisplayWidth(stats.username);
   const titleBadgeW = stats.title ? stats.title.length * 7 + 11 : 0;
-  const titleBadgeX = 30 + usernameW + FS_USERNAME;
+  const titleBadgeX = 30 + usernameDisplayW + FS_USERNAME;
   const countryX = titleBadgeX + (stats.title ? titleBadgeW + 8 : 0);
+
+  function loadFlagInline(
+    code: string,
+    x: number,
+    y: number,
+    w = 18,
+    h = 12,
+  ): string {
+    try {
+      const codeLc = code.toLowerCase();
+      const p = path.resolve(
+        process.cwd(),
+        "node_modules",
+        "flag-icons",
+        "flags",
+        "4x3",
+        `${codeLc}.svg`,
+      );
+      if (!fs.existsSync(p)) return "";
+      let svg = fs.readFileSync(p, "utf8");
+      svg = svg
+        .replace(/<\?xml[\s\S]*?\?>\s*/g, "")
+        .replace(/<!DOCTYPE[\s\S]*?>\s*/g, "");
+      // remove explicit width/height attributes but avoid matching inside other names like "stroke-width"
+      // keep the leading whitespace or '<' so tag spacing remains valid
+      svg = svg.replace(
+        /([\s<])(?:width|height)=("[^"]*"|'[^']*'|[^\s>]+)/gi,
+        "$1",
+      );
+      svg = svg.replace(
+        /<svg/,
+        `<svg x="${x}" y="${y}" width="${w}" height="${h}"`,
+      );
+      return svg;
+    } catch (err) {
+      return "";
+    }
+  }
+
+  const countryFlagMarkup = (() => {
+    if (!stats.country || typeof stats.country !== "string") return "";
+    const code = stats.country.length === 2 ? stats.country : null;
+    if (!code) return "";
+    let flagInline = loadFlagInline(code, countryX, 22, 18, 14);
+    if (!flagInline) {
+      PinoHttp().logger.warn(
+        `Could not load flag for country code "${code}". Make sure "flag-icons" package is installed and the code is correct.`,
+      );
+      return "";
+    }
+    return flagInline;
+  })();
+
+  const countryMarkup = stats.country
+    ? countryFlagMarkup
+      ? `${countryFlagMarkup}\n  <text x="${countryX + 22}" y="32" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(
+          typeof stats.country === "string" && stats.country.length === 2
+            ? stats.country.toUpperCase()
+            : stats.country,
+        )}</text>`
+      : `\n  <text x="${countryX}" y="32" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(
+          stats.country,
+        )}</text>`
+    : "";
 
   const wins = stats.wins ?? 0;
   const losses = stats.losses ?? 0;
@@ -239,19 +322,14 @@ export function statsCard(
   ${
     stats.title
       ? `
-  <rect x="${titleBadgeX}" y="19" width="${titleBadgeW}" height="18" rx="5"
+  <rect x="${titleBadgeX}" y="20" width="${titleBadgeW}" height="18" rx="5"
         fill="${C.titleBadgeBg}" stroke="${C.titleBadgeBorder}" stroke-width="1"/>
-  <text x="${titleBadgeX + titleBadgeW / 2}" y="32" text-anchor="middle"
+  <text x="${titleBadgeX + titleBadgeW / 2}" y="33" text-anchor="middle"
         fill="${C.titleBadgeText}" font-size="${FS_TITLE_BADGE}" font-family="monospace" font-weight="bold">${esc(stats.title)}</text>`
       : ""
   }
 
-  ${
-    stats.country
-      ? `
-  <text x="${countryX}" y="33" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(stats.country)}</text>`
-      : ""
-  }
+  ${countryMarkup}
 
   <rect x="${W - 92}" y="19" width="${stats.platform.length * 8}" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
   <text x="${W - 55}" y="32" text-anchor="middle" fill="${C.muted}" font-size="${FS_PLATFORM}" font-family="sans-serif">${esc(stats.platform)}</text>
