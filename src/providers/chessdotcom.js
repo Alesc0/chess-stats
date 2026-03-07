@@ -33,6 +33,45 @@ function extractRating(modeData) {
 }
 
 /**
+ * Fetches the last `limit` game results for a Chess.com user.
+ * Returns an array of "win" | "loss" | "draw" strings, most-recent first.
+ * @param {string} username
+ * @param {number} limit
+ * @returns {Promise<string[]>}
+ */
+async function fetchRecentResults(username, limit = 10) {
+  try {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const res = await fetch(`${BASE}/${username}/games/${yyyy}/${mm}`, {
+      headers: { "User-Agent": "chess-stats-api/1.0" },
+    });
+    if (!res.ok) return [];
+    const { games = [] } = await res.json();
+    const recent = games.slice(-limit).reverse();
+    const DRAW_RESULTS = new Set([
+      "stalemate",
+      "repetition",
+      "agreed",
+      "timevsinsufficient",
+      "50move",
+      "insufficient",
+    ]);
+    return recent.map((g) => {
+      const isWhite =
+        g.white?.username?.toLowerCase() === username.toLowerCase();
+      const result = (isWhite ? g.white : g.black)?.result;
+      const outcome =
+        result === "win" ? "win" : DRAW_RESULTS.has(result) ? "draw" : "loss";
+      return { result: outcome, type: g.time_class ?? "blitz" };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Fetches stats for a Chess.com username.
  * @param {string} username
  * @returns {Promise<object>} Normalised stats object
@@ -70,8 +109,10 @@ async function fetchChessDotCom(username) {
       losses: acc.losses + m.losses,
       draws: acc.draws + m.draws,
     }),
-    { wins: 0, losses: 0, draws: 0 }
+    { wins: 0, losses: 0, draws: 0 },
   );
+
+  const recentGames = await fetchRecentResults(username);
 
   return {
     platform: "Chess.com",
@@ -86,6 +127,7 @@ async function fetchChessDotCom(username) {
     wins: totals.wins,
     losses: totals.losses,
     draws: totals.draws,
+    recentGames,
   };
 }
 

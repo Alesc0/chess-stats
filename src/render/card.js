@@ -35,6 +35,39 @@ const FS_STAT_LABEL = 12; // W/L/D stat caption
 const FS_DONUT_PCT = 22; // donut centre win-rate percentage
 const FS_DONUT_LBL = 10; // donut centre "WIN RATE" caption
 const FS_FOOTER = 12; // footer game-count text
+const FS_RECENT_LBL = 10; // "LAST 5" caption
+
+// ── Recent games row ────────────────────────────────────────────────────────
+// Renders up to 5 coloured result indicators (W/L/D) with game type label.
+const TYPE_LABEL = { bullet: "bul", blitz: "blz", rapid: "rap" };
+function recentGamesRow(recentGames, C) {
+  if (!recentGames || recentGames.length === 0) return "";
+  const DOT_R = 13;
+  const DOT_SPACING = 30;
+  const startX = RATINGS_X + 10;
+  const y = 203;
+
+  const dots = recentGames
+    .map((game, i) => {
+      const { result, type } = typeof game === "string"
+        ? { result: game, type: "blitz" }
+        : game;
+      const cx = startX + i * DOT_SPACING;
+      const color =
+        result === "win" ? C.win : result === "loss" ? C.loss : C.draw;
+      const letter = result === "win" ? "W" : result === "loss" ? "L" : "D";
+      const typeLabel = TYPE_LABEL[type] ?? type.slice(0, 3);
+      return `
+  <rect rx="3" ry="3" x="${cx - DOT_R}" y="${y - DOT_R}" width="${DOT_R * 2}" height="${DOT_R * 2}" fill="${color}" opacity="0.85"/>
+  <text x="${cx}" y="${y + 4}" text-anchor="middle"
+        fill="${C.bg}" font-size="9" font-family="monospace" font-weight="bold">${letter}</text>
+  <text x="${cx}" y="${y + DOT_R + 10}" text-anchor="middle"
+        fill="${C.muted}" font-size="8" font-family="sans-serif" opacity="0.8">${typeLabel}</text>`;
+    })
+    .join("");
+
+  return `${dots}`;
+}
 
 // ── Rating row modes ──────────────────────────────────────────────────────────
 const RATING_ROWS = [
@@ -250,6 +283,9 @@ function renderCard(stats, themeName) {
       C,
     }),
   ).join("")}
+
+  <!-- ── Recent games ── -->
+  ${recentGamesRow(stats.recentGames, C)}
 
   <!-- ── Vertical divider ── -->
   <line x1="${DIVIDER_X}" y1="${HEADER_H + 10}" x2="${DIVIDER_X}" y2="${H - 14}"
