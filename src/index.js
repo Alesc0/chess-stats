@@ -68,11 +68,16 @@ function setCache(key, data) {
  * Optional query params:
  *   ?format=svg (default) | json  – return raw JSON instead of image
  *   ?theme=dark (default) | light | monokai | nord | solarized | dracula
+ *   ?modes=bullet,blitz,rapid (default) – comma-separated subset to show
  */
 app.get("/stats/:platform/:username", async (req, res) => {
   const { platform, username } = req.params;
   const format = req.query.format ?? "svg";
   const theme = req.query.theme ?? DEFAULT_THEME;
+  const VALID_MODES = new Set(["bullet", "blitz", "rapid", "puzzle"]);
+  const modes = req.query.modes
+    ? req.query.modes.split(",").map((m) => m.trim().toLowerCase()).filter((m) => VALID_MODES.has(m))
+    : ["bullet", "blitz", "rapid"];
 
   const normalized = platform.toLowerCase().replace(/[\.\-]/g, "");
   const cacheKey = `${normalized}:${username.toLowerCase()}`;
@@ -98,7 +103,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
       return res.json(stats);
     }
 
-    const svg = renderCard(stats, theme);
+    const svg = renderCard(stats, theme, modes);
     res
       .set("Content-Type", "image/svg+xml")
       .set("Cache-Control", `public, max-age=${CACHE_TTL_MS / 1000}`)

@@ -34,34 +34,36 @@ const FS_STAT_VALUE = 18; // W/L/D stat number
 const FS_STAT_LABEL = 12; // W/L/D stat caption
 const FS_DONUT_PCT = 22; // donut centre win-rate percentage
 const FS_DONUT_LBL = 10; // donut centre "WIN RATE" caption
-const FS_FOOTER = 12; // footer game-count text
-const FS_RECENT_LBL = 10; // "LAST 5" caption
+const FS_SECTION_GAMES = 12; // footer game-count text
 
 // ── Recent games row ────────────────────────────────────────────────────────
 // Renders up to 5 coloured result indicators (W/L/D) with game type label.
-const TYPE_LABEL = { bullet: "bul", blitz: "blz", rapid: "rap" };
 function recentGamesRow(recentGames, C) {
+  const TYPE_LABEL = { bullet: "bul", blitz: "blz", rapid: "rap" };
+
   if (!recentGames || recentGames.length === 0) return "";
   const DOT_R = 13;
   const DOT_SPACING = 30;
   const startX = RATINGS_X + 10;
-  const y = 203;
+  const y = 210;
 
   const dots = recentGames
     .map((game, i) => {
-      const { result, type } = typeof game === "string"
-        ? { result: game, type: "blitz" }
-        : game;
+      const { result, type } =
+        typeof game === "string" ? { result: game, type: "blitz" } : game;
       const cx = startX + i * DOT_SPACING;
       const color =
         result === "win" ? C.win : result === "loss" ? C.loss : C.draw;
       const letter = result === "win" ? "W" : result === "loss" ? "L" : "D";
       const typeLabel = TYPE_LABEL[type] ?? type.slice(0, 3);
+
       return `
-  <rect rx="3" ry="3" x="${cx - DOT_R}" y="${y - DOT_R}" width="${DOT_R * 2}" height="${DOT_R * 2}" fill="${color}" opacity="0.85"/>
-  <text x="${cx}" y="${y + 4}" text-anchor="middle"
+        <rect rx="3" ry="3" x="${cx - DOT_R}" y="${y - DOT_R}" width="${DOT_R * 2}" height="${DOT_R * 2}" fill="${color}" opacity="0.85"/>
+
+        <text x="${cx}" y="${y + 4}" text-anchor="middle"
         fill="${C.bg}" font-size="9" font-family="monospace" font-weight="bold">${letter}</text>
-  <text x="${cx}" y="${y + DOT_R + 10}" text-anchor="middle"
+        
+        <text x="${cx}" y="${y + DOT_R + 10}" text-anchor="middle"
         fill="${C.muted}" font-size="8" font-family="sans-serif" opacity="0.8">${typeLabel}</text>`;
     })
     .join("");
@@ -70,12 +72,14 @@ function recentGamesRow(recentGames, C) {
 }
 
 // ── Rating row modes ──────────────────────────────────────────────────────────
-const RATING_ROWS = [
-  { label: "Bullet", key: "bullet", y: 100 },
-  { label: "Blitz", key: "blitz", y: 134 },
-  { label: "Rapid", key: "rapid", y: 168 },
-  // { label: "Puzzle", key: "puzzle", y: 202 },
+const ALL_RATING_ROWS = [
+  { label: "Bullet", key: "bullet" },
+  { label: "Blitz", key: "blitz" },
+  { label: "Rapid", key: "rapid" },
+  { label: "Puzzle", key: "puzzle" },
 ];
+const RATING_Y_START = 100;
+const RATING_Y_END = 168;
 
 // ── Donut arc segment ────────────────────────────────────────────────────────
 // Draws one arc of a donut chart using stroke-dasharray on a full circle.
@@ -128,10 +132,29 @@ function statCol(label, value, color, cx, y, C) {
  * Generates an SVG stats card.
  * @param {object} stats  Normalised stats from a provider
  * @param {string} [themeName]  Theme name (dark, light, monokai, nord, solarized, dracula)
+ * @param {string[]} [modes]  Which rating rows to show, e.g. ["bullet","blitz"]
  * @returns {string} SVG markup
  */
-function renderCard(stats, themeName) {
+function renderCard(stats, themeName, modes) {
   const { colors: C } = resolveTheme(themeName);
+
+  // ── Filter and position rating rows ───────────────────────────────────────
+  const selectedKeys =
+    Array.isArray(modes) && modes.length > 0
+      ? modes
+      : ["bullet", "blitz", "rapid"];
+  const RATING_ROWS = ALL_RATING_ROWS.filter((r) =>
+    selectedKeys.includes(r.key),
+  ).map((r, i, arr) => ({
+    ...r,
+    y:
+      arr.length === 1
+        ? Math.round((RATING_Y_START + RATING_Y_END) / 2)
+        : Math.round(
+            RATING_Y_START +
+              (i * (RATING_Y_END - RATING_Y_START)) / (arr.length - 1),
+          ),
+  }));
 
   // ── Header measurements ──────────────────────────────────────────────────
   const usernameW = esc(stats.username).length * 8;
@@ -195,6 +218,22 @@ function renderCard(stats, themeName) {
     clipId: "starClip",
   });
   const glow = renderTitleGlow({ title: stats.title, width: W, height: H });
+
+  // Sort rating rows by value (descending)
+  const sortedRatingRows = RATING_ROWS.sort((a, b) => {
+    const aVal = stats[a.key] ?? 0;
+    const bVal = stats[b.key] ?? 0;
+    return bVal - aVal;
+  }).map((r, i, arr) => ({
+    ...r,
+    y:
+      arr.length === 1
+        ? Math.round((RATING_Y_START + RATING_Y_END) / 2)
+        : Math.round(
+            RATING_Y_START +
+              (i * (RATING_Y_END - RATING_Y_START)) / (arr.length - 1),
+          ),
+  }));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
   viewBox="0 0 ${W} ${H}" role="img" aria-label="Chess stats for ${esc(stats.username)}">
@@ -267,22 +306,27 @@ function renderCard(stats, themeName) {
 
   <!-- ── Section labels ── -->
   <text x="22" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RATINGS</text>
+
   <text x="${DIVIDER_X + 10}" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RECORD</text>
+
+  <text x="${DIVIDER_X + COL_W * 2}" y="70" fill="${C.muted}" font-size="${FS_SECTION_GAMES}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
 
   <!-- ── Horizontal divider ── -->
   <line x1="10" y1="78" x2="${DIVIDER_X - 10}" y2="75"
         stroke="${C.border}" stroke-width="1" opacity="0.6"/>
 
   <!-- ── Rating rows ── -->
-  ${RATING_ROWS.map((r) =>
-    ratingRow({
-      label: r.label,
-      value: stats[r.key],
-      color: C[r.key],
-      y: r.y,
-      C,
-    }),
-  ).join("")}
+  ${sortedRatingRows
+    .map((r) =>
+      ratingRow({
+        label: r.label,
+        value: stats[r.key],
+        color: C[r.key],
+        y: r.y,
+        C,
+      }),
+    )
+    .join("")}
 
   <!-- ── Recent games ── -->
   ${recentGamesRow(stats.recentGames, C)}
@@ -315,9 +359,6 @@ function renderCard(stats, themeName) {
         stroke="${C.border}" stroke-width="1" opacity="0.6"/>
         
   ${statCol("DRAWS", draws, C.draw, colX(2), statY, C)}
-
-  <!-- ── Footer ── -->
-  <text x="22" y="${H - 10}" fill="${C.muted}" font-size="${FS_FOOTER}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
 
   ${glow.markup}
   ${snow.markup}
