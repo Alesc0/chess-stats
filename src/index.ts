@@ -8,13 +8,11 @@ import {
   fetchLichessHistory,
 } from "./providers/history";
 import { fetchLichess } from "./providers/lichess";
+import { renderBlink } from "./render/blink";
 import { renderChart } from "./render/chart";
 import { renderCombined } from "./render/combined";
 import { statsCard } from "./render/stats";
-import { renderBlink } from "./render/blink";
 import { resolveTheme, THEMES } from "./render/themes";
-import { ChessStats } from "./types";
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
@@ -89,7 +87,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
   const cacheKey = `${normalized}:${username.toLowerCase()}`;
 
   try {
-    let stats: ChessStats | null = getCached(cacheKey);
+    let stats: any = getCached(cacheKey);
 
     if (!stats) {
       logger.info({ platform: normalized, username }, "fetching stats");

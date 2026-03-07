@@ -2,8 +2,9 @@ import type {
   ChessDotComStatsResponse,
   ChessModeStats,
   ChessDotComProfile,
-  ChessStats,
-} from "../types.js";
+  ChessDotComGamesResponse,
+  ChessDotComGame,
+} from "../types/chessdotcom.js";
 
 const BASE = "https://api.chess.com/pub/player";
 
@@ -46,31 +47,33 @@ const DRAW_RESULTS = new Set([
   "insufficient",
 ]);
 
-async function fetchRecentResults(username: string, limit = 10) {
-  try {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const res = await fetch(`${BASE}/${username}/games/${yyyy}/${mm}`, {
-      headers: { "User-Agent": "chess-stats-api/1.0" },
-    });
-    if (!res.ok) return [];
-    const { games = [] } = (await res.json()) as { games: any[] };
-    const recent = games.slice(-limit).reverse();
-    return recent.map((g: any) => {
-      const isWhite =
-        g.white?.username?.toLowerCase() === username.toLowerCase();
-      const result = (isWhite ? g.white : g.black)?.result;
-      const outcome =
-        result === "win" ? "win" : DRAW_RESULTS.has(result) ? "draw" : "loss";
-      return { result: outcome, type: g.time_class ?? "blitz" };
-    });
-  } catch {
-    return [];
-  }
+type recentGame = { result: "win" | "loss" | "draw"; type: string };
+
+async function fetchRecentResults(
+  username: string,
+  limit = 10,
+): Promise<recentGame[]> {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const res = await fetch(`${BASE}/${username}/games/${yyyy}/${mm}`, {
+    headers: { "User-Agent": "chess-stats-api/1.0" },
+  });
+  if (!res.ok) return [];
+  const gamesRes: ChessDotComGamesResponse = await res.json();
+  const recent = gamesRes.games.slice(-limit).reverse();
+  return recent.map((g: ChessDotComGame) => {
+    const isWhite = g.white?.username?.toLowerCase() === username.toLowerCase();
+    const result = (isWhite ? g.white : g.black)?.result;
+    const outcome =
+      result === "win" ? "win" : DRAW_RESULTS.has(result) ? "draw" : "loss";
+    return { result: outcome, type: g.time_class ?? "blitz" };
+  });
 }
 
-export async function fetchChessDotCom(username: string): Promise<ChessStats> {
+export async function fetchChessDotCom(
+  username: string,
+): Promise<[ChessDotComProfile, ChessDotComStatsResponse, recentGame[]]> {
   const [profileRes, statsRes] = await Promise.all([
     fetch(`${BASE}/${username}`, {
       headers: { "User-Agent": "chess-stats-api/1.0" },
@@ -87,8 +90,8 @@ export async function fetchChessDotCom(username: string): Promise<ChessStats> {
   if (!profileRes.ok || !statsRes.ok)
     throw new Error(`Chess.com API error (${profileRes.status})`);
 
-  const profile = (await profileRes.json()) as ChessDotComProfile;
-  const stats = (await statsRes.json()) as ChessDotComStatsResponse;
+  const profile: ChessDotComProfile = await profileRes.json();
+  const stats: ChessDotComStatsResponse = await statsRes.json();
 
   const bullet = extractRating(stats.chess_bullet);
   const blitz = extractRating(stats.chess_blitz);
@@ -105,21 +108,5 @@ export async function fetchChessDotCom(username: string): Promise<ChessStats> {
 
   const recentGames = await fetchRecentResults(username);
 
-  return {
-    platform: "Chess.com",
-    username: profile.username,
-    title: profile.title ?? null,
-    country: extractCountry(profile.country),
-    profile: profile,
-    stats: {
-      bullet: stats.chess_bullet,
-      blitz: stats.chess_blitz,
-      rapid: stats.chess_rapid,
-      tactics: stats.tactics,
-    },
-    wins: totals.wins,
-    losses: totals.losses,
-    draws: totals.draws,
-    recentGames,
-  };
+  return [profile, stats, recentGames];
 }

@@ -1,4 +1,4 @@
-import { ChessStats, LichessProfile } from "../types";
+import type { LichessUser, LichessProfile, LichessPerfs } from "../types/lichess.js";
 
 const BASE = "https://lichess.org/api";
 
@@ -43,7 +43,7 @@ async function fetchRecentResults(username: string, limit = 10) {
   }
 }
 
-export async function fetchLichess(username: string): Promise<ChessStats> {
+export async function fetchLichess(username: string) {
   const res = await fetch(`${BASE}/user/${username}`, {
     headers: {
       Accept: "application/json",
@@ -57,29 +57,28 @@ export async function fetchLichess(username: string): Promise<ChessStats> {
     });
   if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
 
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as LichessUser;
 
-  const perf = (key: string) => {
+  const perf = (key: keyof LichessPerfs) => {
     const p = data.perfs?.[key];
-    if (!p || p.prov) return null;
-    return p.rating ?? null;
+    if (!p || !("rating" in p) || ("prov" in p && p.prov)) return null;
+    return p.rating;
   };
   const profile: LichessProfile = {
-    flag: data.profile?.flag ?? "",
-    location: data.profile?.location ?? "",
-    realName: data.profile?.realName ?? "",
-    bio: data.profile?.bio ?? "",
-    title: data.profile?.title ?? null,
-    fideRating: data.profile?.fideRating ?? null,
+    flag:        data.profile?.flag,
+    location:    data.profile?.location,
+    realName:    data.profile?.realName,
+    bio:         data.profile?.bio,
+    fideRating:  data.profile?.fideRating,
   };
-  const count = data.count ?? {};
+  const count = data.count ?? { win: 0, loss: 0, draw: 0 };
   const recentGames = await fetchRecentResults(username);
 
   return {
     platform: "Lichess",
     username: data.username,
     title: data.title ?? null,
-    country: data.profile?.country ?? null,
+    country: data.profile?.flag ?? null,
     profile,
     stats: {
       bullet: perf("bullet"),

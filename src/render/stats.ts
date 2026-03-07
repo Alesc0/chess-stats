@@ -1,8 +1,6 @@
 import { resolveTheme, type ThemeColors } from "./themes.js";
 import { esc, fmt } from "./utils.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
-import { ChessStats } from "../types.js";
-
 const W = 550;
 const H = 250;
 const HEADER_H = 52;
@@ -27,12 +25,6 @@ const FS_STAT_LABEL = 12;
 const FS_DONUT_PCT = 22;
 const FS_DONUT_LBL = 10;
 const FS_SECTION_GAMES = 12;
-const ALL_RATING_ROWS = [
-  { label: "Bullet", key: "bullet" },
-  { label: "Blitz", key: "blitz" },
-  { label: "Rapid", key: "rapid" },
-  { label: "Puzzle", key: "puzzle" },
-];
 const RATING_Y_START = 100;
 const RATING_Y_END = 168;
 
@@ -129,31 +121,27 @@ function statCol(
 }
 
 export function statsCard(
-  stats: ChessStats,
+  stats,
   themeName?: string,
-  modes?: string[],
+  modes: string[] = ["rapid"],
 ): string {
   const { colors: C } = resolveTheme(themeName);
 
-  const selectedKeys =
-    Array.isArray(modes) && modes.length > 0
-      ? modes
-      : ["bullet", "blitz", "rapid"];
-  const positionRows = (rows: typeof ALL_RATING_ROWS) =>
-    rows.map((r, i, arr) => ({
-      ...r,
-      y:
-        arr.length === 1
-          ? Math.round((RATING_Y_START + RATING_Y_END) / 2)
-          : Math.round(
-              RATING_Y_START +
-                (i * (RATING_Y_END - RATING_Y_START)) / (arr.length - 1),
-            ),
-    }));
+  const sortedRatingRows = modes
+    .map((mode, i) => {
+      const key = mode.toLowerCase();
+      return {
+        key,
+        label: mode.toUpperCase(),
+        y:
+          RATING_Y_START +
+          i * ((RATING_Y_END - RATING_Y_START) / (modes.length - 1)),
+      };
+    })
+    .filter((r) => r.key in stats);
 
-  const RATING_ROWS = positionRows(
-    ALL_RATING_ROWS.filter((r) => selectedKeys.includes(r.key)),
-  );
+  console.log(modes);
+  console.log(stats);
 
   const usernameW = esc(stats.username).length * 8;
   const titleBadgeW = stats.title ? stats.title.length * 7 + 11 : 0;
@@ -212,10 +200,6 @@ export function statsCard(
     clipId: "starClip",
   });
   const glow = renderTitleGlow({ title: stats.title, width: W, height: H });
-
-  const sortedRatingRows = positionRows(
-    [...RATING_ROWS].sort((a, b) => (stats[b.key] ?? 0) - (stats[a.key] ?? 0)),
-  );
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
   viewBox="0 0 ${W} ${H}" role="img" aria-label="Chess stats for ${esc(stats.username)}">
