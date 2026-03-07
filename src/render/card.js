@@ -9,39 +9,39 @@ const H = 250;
 // ── Layout ────────────────────────────────────────────────────────────────────
 const HEADER_H = 52;
 const DIVIDER_X = 330;
-const BAR_X = 186;
-const BAR_W = DIVIDER_X - BAR_X - 12; // ~132 px
+const BAR_X = 150;
+const BAR_W = DIVIDER_X - BAR_X - 40; // ~132 px
+const RATINGS_X = 22;
 
 // ── Donut ─────────────────────────────────────────────────────────────────────
 const DONUT_CX = 440;
-const DONUT_CY = 143;
+const DONUT_CY = 135;
 const DONUT_R = 44;
-const DONUT_SW = 17;
+const DONUT_SW = 15;
 
 // Ceiling rating used to scale the progress bars
 const RATING_REF = 3200;
 
 // ── Font sizes ───────────────────────────────────────────────────────────────
-const FS_USERNAME = 14; // header username
-const FS_TITLE_BADGE = 9; // title badge (e.g. GM, IM)
+const FS_USERNAME = 19; // header username
+const FS_TITLE_BADGE = 12; // title badge (e.g. GM, IM)
 const FS_COUNTRY = 10; // country text
-const FS_PLATFORM = 10; // platform pill
-const FS_SECTION_LBL = 10; // "RATINGS" / "RECORD" labels
-const FS_ROW_LABEL = 11; // rating row label (Bullet, Blitz …)
+const FS_PLATFORM = 12; // platform pill
+const FS_SECTION_LBL = 14; // "RATINGS" / "RECORD" labels
+const FS_ROW_LABEL = 16; // rating row label (Bullet, Blitz …)
 const FS_ROW_VALUE = 16; // rating row numeric value
-const FS_STAT_VALUE = 22; // W/L/D stat number
-const FS_STAT_LABEL = 10; // W/L/D stat caption
+const FS_STAT_VALUE = 18; // W/L/D stat number
+const FS_STAT_LABEL = 12; // W/L/D stat caption
 const FS_DONUT_PCT = 22; // donut centre win-rate percentage
 const FS_DONUT_LBL = 10; // donut centre "WIN RATE" caption
-const FS_FOOTER = 9; // footer game-count text
-const FS_FOOTER_ICON = 18; // footer chess-piece glyph
+const FS_FOOTER = 12; // footer game-count text
 
 // ── Rating row modes ──────────────────────────────────────────────────────────
 const RATING_ROWS = [
-  { label: "Bullet", key: "bullet", y: 86 },
-  { label: "Blitz",  key: "blitz",  y: 110 },
-  { label: "Rapid",  key: "rapid",  y: 134 },
-  { label: "Puzzle", key: "puzzle", y: 158 },
+  { label: "Bullet", key: "bullet", y: 100 },
+  { label: "Blitz", key: "blitz", y: 134 },
+  { label: "Rapid", key: "rapid", y: 168 },
+  // { label: "Puzzle", key: "puzzle", y: 202 },
 ];
 
 // ── Donut arc segment ────────────────────────────────────────────────────────
@@ -70,11 +70,14 @@ function ratingRow({ label, value, color, y, C }) {
     : 0;
   const gradId = `ratingBarGrad_${label.toLowerCase()}`;
   return `
-  <circle cx="18" cy="${y - 4}" r="3" fill="${hasVal ? color : C.border}"/>
-  <text x="28" y="${y}" fill="${C.muted}" font-size="${FS_ROW_LABEL}" font-family="sans-serif">${label}</text>
+  <circle cx="${RATINGS_X}" cy="${y - 4}" r="3" fill="${hasVal ? color : C.border}"/>
+
+  <text x="${RATINGS_X + 10}" y="${y}" fill="${C.muted}" font-size="${FS_ROW_LABEL}" font-family="sans-serif">${label}</text>
+
   <text x="${BAR_X - 8}" y="${y}" text-anchor="end"
         fill="${hasVal ? color : C.muted}" font-size="${FS_ROW_VALUE}" font-family="monospace"
         font-weight="${hasVal ? "bold" : "normal"}">${fmt(value)}</text>
+
   <rect x="${BAR_X}" y="${y - 7}" width="${BAR_W}" height="5" rx="2" fill="${C.border}" opacity="0.35"/>
   ${hasVal ? `<rect x="${BAR_X}" y="${y - 7}" width="${fillW}" height="5" rx="2" fill="url(#${gradId})"/>` : ""}`;
 }
@@ -83,8 +86,8 @@ function ratingRow({ label, value, color, y, C }) {
 function statCol(label, value, color, cx, y, C) {
   return `
   <text x="${cx}" y="${y}" text-anchor="middle"
-        fill="${color}" font-size="${FS_STAT_VALUE}" font-family="monospace" font-weight="bold">${value != null ? Number(value).toLocaleString() : "–"}</text>
-  <text x="${cx}" y="${y + 12}" text-anchor="middle"
+        fill="${color}" font-size="${FS_STAT_VALUE}" font-family="monospace" font-weight="bold">${value != null ? Number(value).toLocaleString() : "N/A"}</text>
+  <text x="${cx}" y="${y + 14}" text-anchor="middle"
         fill="${C.muted}" font-size="${FS_STAT_LABEL}" font-family="sans-serif" letter-spacing="0.5">${label}</text>`;
 }
 
@@ -100,7 +103,7 @@ function renderCard(stats, themeName) {
   // ── Header measurements ──────────────────────────────────────────────────
   const usernameW = esc(stats.username).length * 8;
   const titleBadgeW = stats.title ? stats.title.length * 7 + 11 : 0;
-  const titleBadgeX = 22 + usernameW + 8;
+  const titleBadgeX = 30 + usernameW + FS_USERNAME;
   const countryX = titleBadgeX + (stats.title ? titleBadgeW + 8 : 0);
 
   const wins = stats.wins ?? 0;
@@ -147,11 +150,17 @@ function renderCard(stats, themeName) {
 
   // ── W/L/D column positions ─────────────────────────────────────────────
   const COL_W = (W - DIVIDER_X - 16) / 3;
-  const statY = DONUT_CY + DONUT_R + DONUT_SW / 2 + 18;
+  const statY = DONUT_CY + DONUT_R + DONUT_SW + 25;
   const colX = (i) => DIVIDER_X + 8 + COL_W * i + COL_W / 2;
 
   // ── Title effects ──────────────────────────────────────────────────────
-  const snow = renderStarEffect({ title: stats.title, width: W, height: H, count: 14, clipId: "starClip" });
+  const snow = renderStarEffect({
+    title: stats.title,
+    width: W,
+    height: H,
+    count: 14,
+    clipId: "starClip",
+  });
   const glow = renderTitleGlow({ title: stats.title, width: W, height: H });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
@@ -200,41 +209,47 @@ function renderCard(stats, themeName) {
   <text x="22" y="35" fill="${C.text}"
         font-size="${FS_USERNAME}" font-family="monospace" font-weight="bold" letter-spacing="0.3">${esc(stats.username)}</text>
 
-  ${stats.title
+  ${
+    stats.title
       ? `
   <!-- ── Title badge ── -->
-  <rect x="${titleBadgeX}" y="19" width="${titleBadgeW}" height="18" rx="4"
+  <rect x="${titleBadgeX}" y="19" width="${titleBadgeW}" height="18" rx="5"
         fill="${C.titleBadgeBg}" stroke="${C.titleBadgeBorder}" stroke-width="1"/>
   <text x="${titleBadgeX + titleBadgeW / 2}" y="32" text-anchor="middle"
         fill="${C.titleBadgeText}" font-size="${FS_TITLE_BADGE}" font-family="monospace" font-weight="bold">${esc(stats.title)}</text>`
       : ""
-    }
+  }
 
-  ${stats.country
+  ${
+    stats.country
       ? `
   <!-- ── Country ── -->
   <text x="${countryX}" y="33" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(stats.country)}</text>`
-      : ""
-    }
+      : "Unknown country"
+  }
 
   <!-- ── Platform pill ── -->
-  <rect x="${W - 92}" y="19" width="74" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
+  <rect x="${W - 92}" y="19" width="${stats.platform.length * 8}" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
   <text x="${W - 55}" y="32" text-anchor="middle" fill="${C.muted}" font-size="${FS_PLATFORM}" font-family="sans-serif">${esc(stats.platform)}</text>
 
   <!-- ── Section labels ── -->
   <text x="22" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RATINGS</text>
   <text x="${DIVIDER_X + 10}" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RECORD</text>
 
+  <!-- ── Horizontal divider ── -->
+  <line x1="10" y1="78" x2="${DIVIDER_X - 10}" y2="75"
+        stroke="${C.border}" stroke-width="1" opacity="0.6"/>
+
   <!-- ── Rating rows ── -->
   ${RATING_ROWS.map((r) =>
-      ratingRow({
-        label: r.label,
-        value: stats[r.key],
-        color: C[r.key],
-        y: r.y,
-        C,
-      }),
-    ).join("")}
+    ratingRow({
+      label: r.label,
+      value: stats[r.key],
+      color: C[r.key],
+      y: r.y,
+      C,
+    }),
+  ).join("")}
 
   <!-- ── Vertical divider ── -->
   <line x1="${DIVIDER_X}" y1="${HEADER_H + 10}" x2="${DIVIDER_X}" y2="${H - 14}"
@@ -247,19 +262,26 @@ function renderCard(stats, themeName) {
   ${drawArc}
 
   <!-- Donut center labels -->
-  <text x="${DONUT_CX}" y="${DONUT_CY - 4}" text-anchor="middle"
+  <text x="${DONUT_CX}" y="${DONUT_CY + 4}" text-anchor="middle"
         fill="${C.text}" font-size="${FS_DONUT_PCT}" font-family="monospace" font-weight="bold">${winPct}%</text>
-  <text x="${DONUT_CX}" y="${DONUT_CY + 13}" text-anchor="middle"
-        fill="${C.muted}" font-size="${FS_DONUT_LBL}" font-family="sans-serif" letter-spacing="0.6">WIN RATE</text>
+  <text x="${DONUT_CX}" y="${DONUT_CY + 18}" text-anchor="middle"
+        fill="${C.muted}" font-size="${FS_DONUT_LBL}" font-family="sans-serif" letter-spacing="0.6">WR</text>
 
   <!-- ── W / L / D columns ── -->
   ${statCol("WINS", wins, C.win, colX(0), statY, C)}
+
+  <line x1="${colX(0) + COL_W / 2}" y1="${statY - 20}" x2="${colX(0) + COL_W / 2}" y2="${statY + 15}"
+        stroke="${C.border}" stroke-width="1" opacity="0.6"/>
+
   ${statCol("LOSSES", losses, C.loss, colX(1), statY, C)}
+
+   <line x1="${colX(1) + COL_W / 2}" y1="${statY - 20}" x2="${colX(1) + COL_W / 2}" y2="${statY + 15}"
+        stroke="${C.border}" stroke-width="1" opacity="0.6"/>
+        
   ${statCol("DRAWS", draws, C.draw, colX(2), statY, C)}
 
   <!-- ── Footer ── -->
-  <text x="22" y="${H - 10}" fill="${C.border}" font-size="${FS_FOOTER}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
-  <text x="${W - 14}" y="${H - 8}" text-anchor="end" fill="${C.border}" font-size="${FS_FOOTER_ICON}" font-family="serif">♟</text>
+  <text x="22" y="${H - 10}" fill="${C.muted}" font-size="${FS_FOOTER}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
 
   ${glow.markup}
   ${snow.markup}
