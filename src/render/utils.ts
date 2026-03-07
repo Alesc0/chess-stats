@@ -1,9 +1,5 @@
-/**
- * Shared utilities used across all SVG renderers.
- */
-
 /** Escape a value for safe SVG text / attribute insertion. */
-function esc(s) {
+export function esc(s: unknown): string {
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -12,24 +8,20 @@ function esc(s) {
 }
 
 /** Format a nullable number/string; returns an em-dash when absent. */
-function fmt(val) {
+export function fmt(val: unknown): string {
   return val != null ? String(val) : "–";
 }
 
 /** Linear interpolation — maps val from [inMin,inMax] to [outMin,outMax]. */
-function lerp(val, inMin, inMax, outMin, outMax) {
+export function lerp(val: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
   if (inMin === inMax) return (outMin + outMax) / 2;
   return outMin + ((val - inMin) / (inMax - inMin)) * (outMax - outMin);
 }
 
 /**
  * Build a canonical profile URL for the given platform + username.
- * @param {"Chess.com"|"Lichess"} platform
- * @param {string} username
  */
-function platformUrl(platform, username) {
+export function platformUrl(platform: string, username: string): string {
   if (platform === "Lichess") return `https://lichess.org/@/${username}`;
   return `https://www.chess.com/member/${username}`;
 }
-
-module.exports = { esc, fmt, lerp, platformUrl };

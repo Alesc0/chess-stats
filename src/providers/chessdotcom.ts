@@ -1,8 +1,13 @@
-const fetch = require("node-fetch");
+import type {
+  ChessDotComStatsResponse,
+  ChessModeStats,
+  ChessDotComProfile,
+  ChessStats,
+} from "../types.js";
 
 const BASE = "https://api.chess.com/pub/player";
 
-const COUNTRY_CODES = {
+const COUNTRY_CODES: Record<string, string> = {
   "https://api.chess.com/pub/country/US": "US",
   "https://api.chess.com/pub/country/GB": "GB",
   "https://api.chess.com/pub/country/DE": "DE",
@@ -15,15 +20,15 @@ const COUNTRY_CODES = {
   "https://api.chess.com/pub/country/BR": "BR",
 };
 
-function extractCountry(url) {
+function extractCountry(url?: string): string | null {
   if (!url) return null;
   if (COUNTRY_CODES[url]) return COUNTRY_CODES[url];
   const match = url.match(/\/country\/([A-Z]+)$/i);
   return match ? match[1].toUpperCase() : null;
 }
 
-function extractRating(modeData) {
-  if (!modeData || !modeData.last) return null;
+function extractRating(modeData?: ChessModeStats) {
+  if (!modeData?.last) return null;
   return {
     rating: modeData.last.rating,
     wins: modeData.record?.win ?? 0,
@@ -32,14 +37,16 @@ function extractRating(modeData) {
   };
 }
 
-/**
- * Fetches the last `limit` game results for a Chess.com user.
- * Returns an array of "win" | "loss" | "draw" strings, most-recent first.
- * @param {string} username
- * @param {number} limit
- * @returns {Promise<string[]>}
- */
-async function fetchRecentResults(username, limit = 10) {
+const DRAW_RESULTS = new Set([
+  "stalemate",
+  "repetition",
+  "agreed",
+  "timevsinsufficient",
+  "50move",
+  "insufficient",
+]);
+
+async function fetchRecentResults(username: string, limit = 10) {
   try {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -48,17 +55,9 @@ async function fetchRecentResults(username, limit = 10) {
       headers: { "User-Agent": "chess-stats-api/1.0" },
     });
     if (!res.ok) return [];
-    const { games = [] } = await res.json();
+    const { games = [] } = (await res.json()) as { games: any[] };
     const recent = games.slice(-limit).reverse();
-    const DRAW_RESULTS = new Set([
-      "stalemate",
-      "repetition",
-      "agreed",
-      "timevsinsufficient",
-      "50move",
-      "insufficient",
-    ]);
-    return recent.map((g) => {
+    return recent.map((g: any) => {
       const isWhite =
         g.white?.username?.toLowerCase() === username.toLowerCase();
       const result = (isWhite ? g.white : g.black)?.result;
@@ -71,12 +70,7 @@ async function fetchRecentResults(username, limit = 10) {
   }
 }
 
-/**
- * Fetches stats for a Chess.com username.
- * @param {string} username
- * @returns {Promise<object>} Normalised stats object
- */
-async function fetchChessDotCom(username) {
+export async function fetchChessDotCom(username: string): Promise<ChessStats> {
   const [profileRes, statsRes] = await Promise.all([
     fetch(`${BASE}/${username}`, {
       headers: { "User-Agent": "chess-stats-api/1.0" },
@@ -86,28 +80,25 @@ async function fetchChessDotCom(username) {
     }),
   ]);
 
-  if (profileRes.status === 404) {
-    const err = new Error(`Chess.com user "${username}" not found`);
-    err.status = 404;
-    throw err;
-  }
-  if (!profileRes.ok || !statsRes.ok) {
+  if (profileRes.status === 404)
+    throw Object.assign(new Error(`Chess.com user "${username}" not found`), {
+      status: 404,
+    });
+  if (!profileRes.ok || !statsRes.ok)
     throw new Error(`Chess.com API error (${profileRes.status})`);
-  }
 
-  const profile = await profileRes.json();
-  const stats = await statsRes.json();
+  const profile = (await profileRes.json()) as ChessDotComProfile;
+  const stats = (await statsRes.json()) as ChessDotComStatsResponse;
 
   const bullet = extractRating(stats.chess_bullet);
   const blitz = extractRating(stats.chess_blitz);
   const rapid = extractRating(stats.chess_rapid);
 
-  // Aggregate totals across modes
   const totals = [bullet, blitz, rapid].filter(Boolean).reduce(
     (acc, m) => ({
-      wins: acc.wins + m.wins,
-      losses: acc.losses + m.losses,
-      draws: acc.draws + m.draws,
+      wins: acc.wins + m!.wins,
+      losses: acc.losses + m!.losses,
+      draws: acc.draws + m!.draws,
     }),
     { wins: 0, losses: 0, draws: 0 },
   );
@@ -119,16 +110,16 @@ async function fetchChessDotCom(username) {
     username: profile.username,
     title: profile.title ?? null,
     country: extractCountry(profile.country),
-    avatar: profile.avatar ?? null,
-    bullet: bullet ? bullet.rating : null,
-    blitz: blitz ? blitz.rating : null,
-    rapid: rapid ? rapid.rating : null,
-    puzzle: stats.tactics?.highest?.rating ?? null,
+    profile: profile,
+    stats: {
+      bullet: stats.chess_bullet,
+      blitz: stats.chess_blitz,
+      rapid: stats.chess_rapid,
+      tactics: stats.tactics,
+    },
     wins: totals.wins,
     losses: totals.losses,
     draws: totals.draws,
     recentGames,
   };
 }
-
-module.exports = { fetchChessDotCom };

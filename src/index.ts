@@ -1,18 +1,19 @@
-const express = require("express");
-const { version } = require("../package.json");
-const logger = require("./logger");
-const pinoHttp = require("pino-http");
-const { fetchChessDotCom } = require("./providers/chessdotcom");
-const { fetchLichess } = require("./providers/lichess");
-const {
+import express from "express";
+import pinoHttp from "pino-http";
+import { version } from "../package.json";
+import logger from "./logger";
+import { fetchChessDotCom } from "./providers/chessdotcom";
+import {
   fetchChessDotComHistory,
   fetchLichessHistory,
-} = require("./providers/history");
-const { renderCard } = require("./render/card");
-const { renderChart } = require("./render/chart");
-const { renderCombined } = require("./render/combined");
-const { renderBlink } = require("./render/blink");
-const { resolveTheme, THEMES } = require("./render/themes");
+} from "./providers/history";
+import { fetchLichess } from "./providers/lichess";
+import { renderChart } from "./render/chart";
+import { renderCombined } from "./render/combined";
+import { statsCard } from "./render/stats";
+import { renderBlink } from "./render/blink";
+import { resolveTheme, THEMES } from "./render/themes";
+import { ChessStats } from "./types";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,28 +23,30 @@ const DEFAULT_THEME = process.env.DEFAULT_THEME || "dark";
 app.use(
   pinoHttp({
     logger,
-    customLogLevel: (_req, res) =>
+    customLogLevel: (_req: any, res: any) =>
       res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
-    customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
-    customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    customSuccessMessage: (req: any, res: any) =>
+      `${req.method} ${req.url} ${res.statusCode}`,
+    customErrorMessage: (req: any, res: any, err: any) =>
+      `${req.method} ${req.url} ${res.statusCode}`,
     serializers: {
-      req: (req) => ({
+      req: (req: any) => ({
         method: req.method,
         url: req.url,
         remoteAddress:
           req.headers?.["x-forwarded-for"]?.split(",")[0].trim() ??
-          req.remoteAddress,
+          req.connection?.remoteAddress,
       }),
-      res: (res) => ({ statusCode: res.statusCode }),
+      res: (res: any) => ({ statusCode: res.statusCode }),
     },
   }),
 );
 
 // Simple in-memory cache: key → { data, expires }
-const cache = new Map();
+const cache = new Map<string, { data: any; expires: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-function getCached(key) {
+function getCached(key: string) {
   const entry = cache.get(key);
   if (!entry) return null;
   if (Date.now() > entry.expires) {
@@ -55,7 +58,7 @@ function getCached(key) {
   return entry.data;
 }
 
-function setCache(key, data) {
+function setCache(key: string, data: any) {
   cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
   logger.debug({ key, ttl_ms: CACHE_TTL_MS }, "cache set");
 }
@@ -76,14 +79,17 @@ app.get("/stats/:platform/:username", async (req, res) => {
   const theme = req.query.theme ?? DEFAULT_THEME;
   const VALID_MODES = new Set(["bullet", "blitz", "rapid", "puzzle"]);
   const modes = req.query.modes
-    ? req.query.modes.split(",").map((m) => m.trim().toLowerCase()).filter((m) => VALID_MODES.has(m))
+    ? (req.query.modes as string)
+        .split(",")
+        .map((m) => m.trim().toLowerCase())
+        .filter((m) => VALID_MODES.has(m))
     : ["bullet", "blitz", "rapid"];
 
   const normalized = platform.toLowerCase().replace(/[\.\-]/g, "");
   const cacheKey = `${normalized}:${username.toLowerCase()}`;
 
   try {
-    let stats = getCached(cacheKey);
+    let stats: ChessStats | null = getCached(cacheKey);
 
     if (!stats) {
       logger.info({ platform: normalized, username }, "fetching stats");
@@ -103,7 +109,7 @@ app.get("/stats/:platform/:username", async (req, res) => {
       return res.json(stats);
     }
 
-    const svg = renderCard(stats, theme, modes);
+    const svg = statsCard(stats, theme, modes);
     res
       .set("Content-Type", "image/svg+xml")
       .set("Cache-Control", `public, max-age=${CACHE_TTL_MS / 1000}`)
@@ -111,7 +117,13 @@ app.get("/stats/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "stats error",
     );
     if (format === "json") {
@@ -158,7 +170,10 @@ app.get("/history/:platform/:username", async (req, res) => {
   const normalized = platform.toLowerCase().replace(/[\.-]/g, "");
   const HISTORY_TTL = 15 * 60 * 1000;
 
-  logger.info({ platform: normalized, username, modes, months }, "fetching history");
+  logger.info(
+    { platform: normalized, username, modes, months },
+    "fetching history",
+  );
 
   function historyCached(key) {
     const entry = cache.get(key);
@@ -177,14 +192,14 @@ app.get("/history/:platform/:username", async (req, res) => {
     const statsPromise = stats
       ? Promise.resolve(stats)
       : (async () => {
-        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-          stats = await fetchChessDotCom(username);
-        } else if (normalized === "lichess") {
-          stats = await fetchLichess(username);
-        }
-        if (stats) setCache(statsCacheKey, stats);
-        return stats;
-      })().catch(() => null); // non-critical — ignore errors
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            stats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            stats = await fetchLichess(username);
+          }
+          if (stats) setCache(statsCacheKey, stats);
+          return stats;
+        })().catch(() => null); // non-critical — ignore errors
 
     // Fetch all requested modes in parallel, using per-mode cache keys
     const [resolvedStats, ...results] = await Promise.all([
@@ -193,7 +208,10 @@ app.get("/history/:platform/:username", async (req, res) => {
         const cacheKey = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
         let result = historyCached(cacheKey);
         if (!result) {
-          logger.debug({ platform: normalized, username, mode, months }, "cache miss — fetching history");
+          logger.debug(
+            { platform: normalized, username, mode, months },
+            "cache miss — fetching history",
+          );
           if (normalized === "chessdotcom" || normalized === "chesscommunity") {
             result = await fetchChessDotComHistory(username, mode, months);
           } else if (normalized === "lichess") {
@@ -203,7 +221,15 @@ app.get("/history/:platform/:username", async (req, res) => {
               error: `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
             });
           }
-          logger.debug({ platform: normalized, username, mode, points: result.points?.length ?? 0 }, "history fetched");
+          logger.debug(
+            {
+              platform: normalized,
+              username,
+              mode,
+              points: result.points?.length ?? 0,
+            },
+            "history fetched",
+          );
           cache.set(cacheKey, {
             data: result,
             expires: Date.now() + HISTORY_TTL,
@@ -235,7 +261,14 @@ app.get("/history/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        modes,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "history error",
     );
     if (format === "json") {
@@ -285,20 +318,19 @@ app.get("/combined/:platform/:username", async (req, res) => {
     const statsPromise = stats
       ? Promise.resolve(stats)
       : (async () => {
-        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-          stats = await fetchChessDotCom(username);
-        } else if (normalized === "lichess") {
-          stats = await fetchLichess(username);
-        } else {
-          const err = new Error(
-            `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-          );
-          err.status = 400;
-          throw err;
-        }
-        setCache(statsCacheKey, stats);
-        return stats;
-      })();
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            stats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            stats = await fetchLichess(username);
+          } else {
+            const err = new Error(
+              `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+            );
+            throw err;
+          }
+          setCache(statsCacheKey, stats);
+          return stats;
+        })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
@@ -327,7 +359,14 @@ app.get("/combined/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        modes,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "combined error",
     );
     const { colors: ec } = resolveTheme(theme);
@@ -375,20 +414,19 @@ app.get("/blink/:platform/:username", async (req, res) => {
     const statsPromise = stats
       ? Promise.resolve(stats)
       : (async () => {
-        if (normalized === "chessdotcom" || normalized === "chesscommunity") {
-          stats = await fetchChessDotCom(username);
-        } else if (normalized === "lichess") {
-          stats = await fetchLichess(username);
-        } else {
-          const err = new Error(
-            `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-          );
-          err.status = 400;
-          throw err;
-        }
-        setCache(statsCacheKey, stats);
-        return stats;
-      })();
+          if (normalized === "chessdotcom" || normalized === "chesscommunity") {
+            stats = await fetchChessDotCom(username);
+          } else if (normalized === "lichess") {
+            stats = await fetchLichess(username);
+          } else {
+            const err = new Error(
+              `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+            );
+            throw err;
+          }
+          setCache(statsCacheKey, stats);
+          return stats;
+        })();
 
     const historyPromises = modes.map(async (mode) => {
       const key = `history:${normalized}:${username.toLowerCase()}:${mode}:${months}`;
@@ -426,7 +464,14 @@ app.get("/blink/:platform/:username", async (req, res) => {
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
-      { platform, username, modes, status, err: err.message, ...(status >= 500 && { stack: err.stack }) },
+      {
+        platform,
+        username,
+        modes,
+        status,
+        err: err.message,
+        ...(status >= 500 && { stack: err.stack }),
+      },
       "blink error",
     );
     const { colors: ec } = resolveTheme(theme);
@@ -486,5 +531,8 @@ app.get("/", (_req, res) => {
   });
 });
 app.listen(PORT, () => {
-  logger.info({ version, port: PORT, defaultTheme: DEFAULT_THEME }, "server started");
+  logger.info(
+    { version, port: PORT, defaultTheme: DEFAULT_THEME },
+    "server started",
+  );
 });

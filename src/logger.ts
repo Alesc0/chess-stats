@@ -1,10 +1,9 @@
-const fs = require("fs");
-const path = require("path");
-const pino = require("pino");
+import fs from "fs";
+import path from "path";
+import pino from "pino";
 
 const LOG_FILE = process.env.LOG_FILE ?? "logs/chess-stats.log";
 
-// Ensure the log directory and file exist
 const logDir = path.dirname(LOG_FILE);
 fs.mkdirSync(logDir, { recursive: true });
 if (!fs.existsSync(LOG_FILE)) {
@@ -29,10 +28,10 @@ const transport = pino.transport({
 const logger = pino(
   {
     level: process.env.LOG_LEVEL ?? "info",
-    base: undefined, // omit pid / hostname
+    base: undefined,
     timestamp: pino.stdTimeFunctions.isoTime,
   },
   transport,
 );
 
-module.exports = logger;
+export default logger;
