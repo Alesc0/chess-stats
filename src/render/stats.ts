@@ -1,6 +1,10 @@
 import { resolveTheme, type ThemeColors } from "./themes.js";
 import { esc, fmt } from "./utils.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
+import fs from "fs";
+import path from "path";
+import PinoHttp from "pino-http";
+
 const W = 550;
 const H = 250;
 const HEADER_H = 52;
@@ -145,6 +149,70 @@ export function statsCard(
   const titleBadgeX = 30 + usernameW + FS_USERNAME;
   const countryX = titleBadgeX + (stats.title ? titleBadgeW + 8 : 0);
 
+  function loadFlagInline(
+    code: string,
+    x: number,
+    y: number,
+    w = 18,
+    h = 12,
+  ): string {
+    try {
+      const codeLc = code.toLowerCase();
+      const p = path.resolve(
+        process.cwd(),
+        "node_modules",
+        "flag-icons",
+        "flags",
+        "4x3",
+        `${codeLc}.svg`,
+      );
+      if (!fs.existsSync(p)) return "";
+      let svg = fs.readFileSync(p, "utf8");
+      svg = svg
+        .replace(/<\?xml[\s\S]*?\?>\s*/g, "")
+        .replace(/<!DOCTYPE[\s\S]*?>\s*/g, "");
+      // remove explicit width/height attributes but avoid matching inside other names like "stroke-width"
+      // keep the leading whitespace or '<' so tag spacing remains valid
+      svg = svg.replace(
+        /([\s<])(?:width|height)=("[^"]*"|'[^']*'|[^\s>]+)/gi,
+        "$1",
+      );
+      svg = svg.replace(
+        /<svg/,
+        `<svg x="${x}" y="${y}" width="${w}" height="${h}"`,
+      );
+      return svg;
+    } catch (err) {
+      return "";
+    }
+  }
+
+  const countryFlagMarkup = (() => {
+    if (!stats.country || typeof stats.country !== "string") return "";
+    const code = stats.country.length === 2 ? stats.country : null;
+    if (!code) return "";
+    let flagInline = loadFlagInline(code, countryX, 23, 18, 14);
+    if (!flagInline) {
+      PinoHttp().logger.warn(
+        `Could not load flag for country code "${code}". Make sure "flag-icons" package is installed and the code is correct.`,
+      );
+      return "";
+    }
+    return flagInline;
+  })();
+
+  const countryMarkup = stats.country
+    ? countryFlagMarkup
+      ? `${countryFlagMarkup}\n  <text x="${countryX + 22}" y="33" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(
+          typeof stats.country === "string" && stats.country.length === 2
+            ? stats.country.toUpperCase()
+            : stats.country,
+        )}</text>`
+      : `\n  <text x="${countryX}" y="33" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(
+          stats.country,
+        )}</text>`
+    : "";
+
   const wins = stats.wins ?? 0;
   const losses = stats.losses ?? 0;
   const draws = stats.draws ?? 0;
@@ -246,12 +314,7 @@ export function statsCard(
       : ""
   }
 
-  ${
-    stats.country
-      ? `
-  <text x="${countryX}" y="33" fill="${C.muted}" font-size="${FS_COUNTRY}" font-family="sans-serif">${esc(stats.country)}</text>`
-      : ""
-  }
+  ${countryMarkup}
 
   <rect x="${W - 92}" y="19" width="${stats.platform.length * 8}" height="18" rx="9" fill="${C.platform}" stroke="${C.border}" stroke-width="1"/>
   <text x="${W - 55}" y="32" text-anchor="middle" fill="${C.muted}" font-size="${FS_PLATFORM}" font-family="sans-serif">${esc(stats.platform)}</text>
