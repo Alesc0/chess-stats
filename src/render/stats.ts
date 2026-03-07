@@ -149,7 +149,7 @@ export function statsCard(
     const minChars = 5;
     const maxChars = 25;
     const minMul = 6;
-    const maxMul = 10.0;
+    const maxMul = 9.8;
     if (len <= minChars) return Math.round(len * minMul);
     if (len >= maxChars) return Math.round(len * maxMul);
     const t = (len - minChars) / (maxChars - minChars);
