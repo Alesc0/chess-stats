@@ -1,8 +1,14 @@
 import {
   fetchChessDotCom,
   fetchChessDotComHistory,
+  fetchChessDotComActivity,
 } from "../providers/chessdotcom";
-import { fetchLichess, fetchLichessHistory } from "../providers/lichess";
+import {
+  fetchLichess,
+  fetchLichessHistory,
+  fetchLichessActivity,
+} from "../providers/lichess";
+import type { DailyActivity } from "../render/activity";
 import type { ChessStats } from "../types";
 
 export type HistoryResult = {
@@ -58,6 +64,23 @@ export async function fetchHistory(
   if (isChessDotCom(platform))
     return fetchChessDotComHistory(username, mode, months);
   if (isLichess(platform)) return fetchLichessHistory(username, mode, months);
+  throw Object.assign(
+    new Error(
+      `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+    ),
+    { status: 400 },
+  );
+}
+
+export async function fetchActivity(
+  platform: string,
+  username: string,
+  months: number,
+  mode?: string,
+): Promise<DailyActivity[]> {
+  if (isChessDotCom(platform))
+    return fetchChessDotComActivity(username, months, mode);
+  if (isLichess(platform)) return fetchLichessActivity(username, months, mode);
   throw Object.assign(
     new Error(
       `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,

@@ -56,3 +56,20 @@ export function historyCacheKey(
 ): string {
   return `history:${platform}:${username.toLowerCase()}:${mode}:${months}`;
 }
+
+export function activityCacheKey(
+  platform: string,
+  username: string,
+  months: number,
+  mode?: string,
+): string {
+  return `activity:${platform}:${username.toLowerCase()}:${mode ?? "all"}:${months}`;
+}
+
+export function getActivity<T = unknown>(key: string): T | null {
+  return get<T>(key);
+}
+
+export function setActivity(key: string, data: unknown): void {
+  set(key, data, HISTORY_CACHE_TTL);
+}
