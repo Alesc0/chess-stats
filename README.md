@@ -18,14 +18,19 @@ A self-hosted API that fetches chess statistics from **Chess.com** and **Lichess
 git clone https://github.com/yourname/chess-stats
 cd chess-stats
 npm install
+# Recommended: use Bun to run TypeScript directly
+# (the package scripts use `bun --watch` / `bun --hot`)
 npm start
-# → http://localhost:3000
+# or for development with hot-reload
+npm run dev
 ```
 
-For development with auto-reload:
+If you don't have Bun, you can build and run with Node (Node >= 18):
 
 ```bash
-npm run dev   # requires nodemon
+npm run build
+# then run the compiled output (adjust path if your tsconfig writes elsewhere)
+node dist/src/index.js
 ```
 
 ### Environment variables
@@ -35,8 +40,12 @@ npm run dev   # requires nodemon
 | `PORT`          | `3000`  | Port the server listens on                                     |
 | `DEFAULT_THEME` | `dark`  | Theme applied to all endpoints when `?theme=` is not specified |
 
+Run with Bun (recommended) or set env vars before running the built Node app:
+
 ```bash
-DEFAULT_THEME=nord PORT=8080 node src/index.js
+DEFAULT_THEME=nord PORT=8080 bun src/index.ts
+# or after building
+DEFAULT_THEME=nord PORT=8080 node dist/src/index.js
 ```
 
 ---
@@ -75,6 +84,8 @@ docker compose up -d
 
 ## Endpoints
 
+The API exposes several SVG-producing endpoints. All image responses are `image/svg+xml` and the endpoints also support `?format=json` to return raw JSON when useful.
+
 ### `GET /stats/:platform/:username`
 
 Returns an SVG stats card with ratings, game counts, and a W/L/D donut.
@@ -86,7 +97,7 @@ Returns an SVG stats card with ratings, game counts, and a W/L/D donut.
 | `?theme`   | see [Themes](#themes)    | `dark`  |
 | `?format`  | `svg`, `json`            | `svg`   |
 
-**Examples:**
+Examples:
 
 ```
 /stats/chessdotcom/hikaru
@@ -104,18 +115,32 @@ Returns an SVG line chart of Elo rating over time. Supports overlaying multiple 
 | ---------- | --------------------------------------------------------- | ------- |
 | `platform` | `chessdotcom`, `lichess`                                  | —       |
 | `username` | player username                                           | —       |
-| `?mode`    | `bullet`, `blitz`, `rapid`, `puzzle` — or comma-separated | `blitz` |
+| `?mode`    | `bullet`, `blitz`, `rapid` — or comma-separated          | `blitz` |
 | `?months`  | `1`–`12`                                                  | `6`     |
 | `?theme`   | see [Themes](#themes)                                     | `dark`  |
 | `?format`  | `svg`, `json`                                             | `svg`   |
 
-**Examples:**
+Examples:
 
 ```
 /history/chessdotcom/hikaru?mode=blitz&months=6
 /history/lichess/DrNykterstein?mode=bullet&months=3&theme=dracula
 /history/chessdotcom/hikaru?mode=bullet,blitz,rapid&months=6
 ```
+
+---
+
+### `GET /combined/:platform/:username`
+
+Returns a single unified SVG containing the full stats card with a small inline mini-chart (stats + history combined).
+
+Optional query params: `?mode`, `?months`, `?theme`, `?format` (same semantics as above).
+
+---
+
+### `GET /blink/:platform/:username`
+
+Returns an animated SVG that toggles between the stats card and the history chart (CSS animation). Same query params as `/combined`.
 
 ---
 
@@ -154,19 +179,28 @@ Set a global default via the `DEFAULT_THEME` env var, or pass `?theme=` on any r
 
 ```
 src/
-├── index.js              # Express server, routing, caching
+├── index.ts              # Express server, routing, caching
+├── logger.ts             # pino logger wrapper
+├── types.ts              # shared TypeScript types
 ├── providers/
-│   ├── chessdotcom.js    # Chess.com stats fetcher
-│   ├── lichess.js        # Lichess stats fetcher
-│   └── history.js        # Rating history fetchers (both platforms)
-└── render/
-    ├── card.js           # SVG stats card renderer
-    ├── chart.js          # SVG line chart renderer
-    └── themes.js         # Theme definitions
+│   ├── chessdotcom.ts    # Chess.com stats + history fetchers
+│   ├── lichess.ts        # Lichess stats + history fetchers
+│   └── mappers/          # provider-specific response mappers
+│       ├── chess.mapper.ts
+│       └── lichess.mapper.ts
+├── render/
+│   ├── stats.ts          # SVG stats card renderer
+│   ├── chart.ts          # SVG line chart renderer
+│   ├── combined.ts       # combined card + chart renderer
+│   ├── blink.ts          # animated toggle renderer
+│   └── themes.ts         # Theme definitions
 ```
 
 ## Tech
 
-- [Express](https://expressjs.com/) — HTTP server
-- [node-fetch](https://github.com/node-fetch/node-fetch) — upstream API calls
+- Bun (used for running TypeScript in the repo's scripts)
+- TypeScript — codebase is written in `.ts`
+- Express — HTTP server
+- `pino` / `pino-http` — logging
+- `flag-icons` — small flag icons used in cards
 - Pure SVG string generation — no canvas or headless browser required
