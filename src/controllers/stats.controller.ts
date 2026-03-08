@@ -5,6 +5,7 @@ import { statsCard } from "../render/stats";
 import { resolveTheme } from "../render/themes";
 import { errorSvg, getModes } from "../render/utils";
 import * as cache from "../services/cache.service";
+import { sendImage } from "../services/png.service";
 import {
   fetchStats,
   isKnownPlatform,
@@ -40,10 +41,7 @@ export async function getStatsCard(req: Request, res: Response) {
     }
 
     const svg = statsCard(stats, theme, modes);
-    res
-      .set("Content-Type", "image/svg+xml")
-      .set("Cache-Control", `public, max-age=${STATS_CACHE_TTL / 1000}`)
-      .send(svg);
+    sendImage(req, res, svg, STATS_CACHE_TTL);
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
@@ -60,9 +58,6 @@ export async function getStatsCard(req: Request, res: Response) {
       return res.status(status).json({ error: err.message });
     }
     const { colors: ec } = resolveTheme(theme);
-    res
-      .status(status)
-      .set("Content-Type", "image/svg+xml")
-      .send(errorSvg(err.message, ec));
+    sendImage(req, res, errorSvg(err.message, ec), 0, status);
   }
 }
