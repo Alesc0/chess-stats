@@ -118,3 +118,64 @@ export async function fetchLichessHistory(
 
   return { mode, points: deduped };
 }
+
+export async function fetchLichessActivity(
+  username: string,
+  months = 3,
+  mode?: string,
+) {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const since = cutoff.getTime();
+
+  const perfTypes = mode ?? "bullet,blitz,rapid";
+  const res = await fetch(
+    `${BASE}/games/user/${username}?since=${since}&moves=false&perfType=${perfTypes}`,
+    {
+      headers: {
+        Accept: "application/x-ndjson",
+        "User-Agent": "chess-stats-api/1.0",
+      },
+    },
+  );
+
+  if (res.status === 404)
+    throw Object.assign(new Error(`Lichess user "${username}" not found`), {
+      status: 404,
+    });
+  if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
+
+  const text = await res.text();
+  const games = text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  const daily = new Map<string, { games: number; wins: number }>();
+  const userLower = username.toLowerCase();
+
+  for (const g of games) {
+    const date = new Date(g.createdAt).toISOString().slice(0, 10);
+    const entry = daily.get(date) ?? { games: 0, wins: 0 };
+    entry.games++;
+    const isWhite =
+      (g.players?.white?.user?.id ?? "").toLowerCase() === userLower;
+    const winner = g.winner;
+    if ((isWhite && winner === "white") || (!isWhite && winner === "black")) {
+      entry.wins++;
+    }
+    daily.set(date, entry);
+  }
+
+  return Array.from(daily.entries())
+    .map(([date, d]) => ({ date, games: d.games, wins: d.wins }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}

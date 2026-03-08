@@ -105,5 +105,55 @@ export async function fetchChessDotComHistory(
     (p, i) => i === 0 || p.date.getTime() !== points[i - 1].date.getTime(),
   );
 
-  return { mode, points: deduped  };
+  return { mode, points: deduped };
+}
+
+export async function fetchChessDotComActivity(
+  username: string,
+  months = 3,
+  mode?: string,
+) {
+  const archivesRes = await fetch(`${BASE}/${username}/games/archives`, {
+    headers: HEADERS,
+  });
+  if (archivesRes.status === 404)
+    throw Object.assign(new Error(`Chess.com user "${username}" not found`), {
+      status: 404,
+    });
+  if (!archivesRes.ok)
+    throw new Error(`Chess.com API error (${archivesRes.status})`);
+
+  const { archives = [] } = (await archivesRes.json()) as {
+    archives: string[];
+  };
+  const slice = archives.slice(-Math.min(months, 12));
+
+  if (slice.length === 0) return [];
+
+  const monthGames = await Promise.all(
+    slice.map(async (url) => {
+      const r = await fetch(url, { headers: HEADERS });
+      if (!r.ok) return [];
+      const { games = [] } = (await r.json()) as { games: any[] };
+      return mapChessDotComRecentGames(games, username);
+    }),
+  );
+
+  const daily = new Map<string, { games: number; wins: number }>();
+  const modeSet = mode ? new Set(mode.split(",").map((m) => m.trim())) : null;
+
+  for (const games of monthGames) {
+    for (const g of games) {
+      if (modeSet && !modeSet.has(g.type)) continue;
+      const key = g.date.toISOString().slice(0, 10);
+      const entry = daily.get(key) ?? { games: 0, wins: 0 };
+      entry.games++;
+      if (g.result === "win") entry.wins++;
+      daily.set(key, entry);
+    }
+  }
+
+  return Array.from(daily.entries())
+    .map(([date, d]) => ({ date, games: d.games, wins: d.wins }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
