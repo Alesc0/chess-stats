@@ -13,6 +13,8 @@ import {
   normalizePlatform,
   platformLabel,
 } from "../services/platform.service";
+import { trace } from "@opentelemetry/api";
+import { traceAsync, traceSync } from "../services/telemetry.service";
 
 export async function getActivityCard(req: Request, res: Response) {
   const { platform, username } = req.params;
@@ -38,47 +40,72 @@ export async function getActivityCard(req: Request, res: Response) {
       });
     }
 
-    // Fetch stats (for header info) and activity data in parallel
+    trace.getActiveSpan()?.setAttributes({
+      "chess.platform": normalized,
+      "chess.username": username,
+      "chess.months": months,
+      "chess.format": format,
+      "chess.theme": theme,
+      ...(mode ? { "chess.mode": mode } : {}),
+    });
+
     const sKey = cache.statsCacheKey(normalized, username);
     const aKey = cache.activityCacheKey(normalized, username, months, mode);
 
-    const [resolvedStats, activity] = await Promise.all([
-      (async () => {
-        const cached = cache.getStats(sKey);
-        if (cached) return cached;
-        const stats = await fetchStats(normalized, username);
-        cache.setStats(sKey, stats);
-        return stats;
-      })().catch(() => null),
+    const [resolvedStats, activity] = await traceAsync(
+      "controller.activity.resolve",
+      () =>
+        Promise.all([
+          (async () => {
+            const cached = cache.getStats(sKey);
+            if (cached) return cached;
+            const stats = await fetchStats(normalized, username);
+            cache.setStats(sKey, stats);
+            return stats;
+          })().catch(() => null),
 
-      (async () => {
-        const cached =
-          cache.getActivity<ReturnType<typeof fetchActivity>>(aKey);
-        if (cached) return cached;
-        logger.debug(
-          { platform: normalized, username, mode, months },
-          "cache miss — fetching activity",
-        );
-        const data = await fetchActivity(normalized, username, months, mode);
-        cache.setActivity(aKey, data);
-        return data;
-      })(),
-    ]);
+          (async () => {
+            const cached =
+              cache.getActivity<ReturnType<typeof fetchActivity>>(aKey);
+            if (cached) return cached;
+            logger.debug(
+              { platform: normalized, username, mode, months },
+              "cache miss — fetching activity",
+            );
+            const data = await fetchActivity(
+              normalized,
+              username,
+              months,
+              mode,
+            );
+            cache.setActivity(aKey, data);
+            return data;
+          })(),
+        ]),
+      {
+        "chess.platform": normalized,
+        "chess.username": username,
+        "chess.months": months,
+        ...(mode && { "chess.mode": mode }),
+      },
+    );
 
     if (format === "json") {
       return res.json(activity);
     }
 
-    const svg = renderActivityHeatmap({
-      username,
-      platform: platformLabel(normalized),
-      title: resolvedStats?.title ?? null,
-      country: resolvedStats?.country ?? null,
-      activity,
-      months,
-      mode,
-      themeName: theme,
-    });
+    const svg = traceSync("render.activity", () =>
+      renderActivityHeatmap({
+        username,
+        platform: platformLabel(normalized),
+        title: resolvedStats?.title ?? null,
+        country: resolvedStats?.country ?? null,
+        activity,
+        months,
+        mode,
+        themeName: theme,
+      }),
+    );
 
     sendImage(req, res, svg, HISTORY_CACHE_TTL);
   } catch (err) {

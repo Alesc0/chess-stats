@@ -1,3 +1,4 @@
+import { trace } from "@opentelemetry/api";
 import logger from "../logger";
 import { STATS_CACHE_TTL, HISTORY_CACHE_TTL } from "../config";
 import type { ChessStats } from "../types";
@@ -11,18 +12,24 @@ const store = new Map<string, CacheEntry>();
 
 function get<T = unknown>(key: string): T | null {
   const entry = store.get(key);
-  if (!entry) return null;
+  if (!entry) {
+    trace.getActiveSpan()?.addEvent("cache.miss", { "cache.key": key });
+    return null;
+  }
   if (Date.now() > entry.expires) {
     store.delete(key);
+    trace.getActiveSpan()?.addEvent("cache.expired", { "cache.key": key });
     logger.debug({ key }, "cache expired");
     return null;
   }
+  trace.getActiveSpan()?.addEvent("cache.hit", { "cache.key": key });
   logger.debug({ key }, "cache hit");
   return entry.data as T;
 }
 
 function set(key: string, data: unknown, ttl: number): void {
   store.set(key, { data, expires: Date.now() + ttl });
+  trace.getActiveSpan()?.addEvent("cache.set", { "cache.key": key, "cache.ttl_ms": ttl });
   logger.debug({ key, ttl_ms: ttl }, "cache set");
 }
 

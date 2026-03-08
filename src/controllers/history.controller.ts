@@ -13,6 +13,8 @@ import {
   normalizePlatform,
   platformLabel,
 } from "../services/platform.service";
+import { trace } from "@opentelemetry/api";
+import { traceAsync, traceSync } from "../services/telemetry.service";
 
 export async function getHistoryChart(req: Request, res: Response) {
   const { platform, username } = req.params;
@@ -38,60 +40,85 @@ export async function getHistoryChart(req: Request, res: Response) {
       });
     }
 
-    // Fetch stats (for the title) — non-critical
+    trace.getActiveSpan()?.setAttributes({
+      "chess.platform": normalized,
+      "chess.username": username,
+      "chess.modes": modes.join(","),
+      "chess.months": months,
+      "chess.format": format,
+      "chess.theme": theme,
+    });
+
     const sKey = cache.statsCacheKey(normalized, username);
-    let cachedStats = cache.getStats(sKey);
-    const statsPromise = cachedStats
-      ? Promise.resolve(cachedStats)
-      : (async () => {
-          cachedStats = await fetchStats(normalized, username);
-          cache.setStats(sKey, cachedStats);
-          return cachedStats;
+
+    const [resolvedStats, ...results] = await traceAsync(
+      "controller.history.resolve",
+      () => {
+        const statsPromise = (async () => {
+          const cached = cache.getStats(sKey);
+          if (cached) return cached;
+          const fresh = await fetchStats(normalized, username);
+          cache.setStats(sKey, fresh);
+          return fresh;
         })().catch(() => null);
 
-    // Fetch all requested modes in parallel
-    const [resolvedStats, ...results] = await Promise.all([
-      statsPromise,
-      ...modes.map(async (mode) => {
-        const hKey = cache.historyCacheKey(normalized, username, mode, months);
-        let result = cache.getHistory(hKey);
-        if (!result) {
-          logger.debug(
-            { platform: normalized, username, mode, months },
-            "cache miss — fetching history",
-          );
-          result = await fetchHistory(normalized, username, mode, months);
-          logger.debug(
-            {
-              platform: normalized,
+        return Promise.all([
+          statsPromise,
+          ...modes.map(async (mode) => {
+            const hKey = cache.historyCacheKey(
+              normalized,
               username,
               mode,
-              points: (result as any).points?.length ?? 0,
-            },
-            "history fetched",
-          );
-          cache.setHistory(hKey, result);
-        }
-        return result as {
-          mode: string;
-          points: Array<{ date: Date; rating: number }>;
-        };
-      }),
-    ]);
+              months,
+            );
+            let result = cache.getHistory(hKey);
+            if (!result) {
+              logger.debug(
+                { platform: normalized, username, mode, months },
+                "cache miss — fetching history",
+              );
+              result = await fetchHistory(normalized, username, mode, months);
+              logger.debug(
+                {
+                  platform: normalized,
+                  username,
+                  mode,
+                  points: (result as any).points?.length ?? 0,
+                },
+                "history fetched",
+              );
+              cache.setHistory(hKey, result);
+            }
+            return result as {
+              mode: string;
+              points: Array<{ date: Date; rating: number }>;
+            };
+          }),
+        ]);
+      },
+      {
+        "chess.platform": normalized,
+        "chess.username": username,
+        "chess.modes": modes.join(","),
+        "chess.months": months,
+      },
+    );
 
     if (format === "json") {
       return res.json(modes.length === 1 ? results[0] : results);
     }
 
-    const svg = renderChart({
-      username,
-      platform: platformLabel(normalized),
-      modes: results.map((r) => r.mode) as any,
-      points: results.map((r) => r.points) as any,
-      months,
-      themeName: theme,
-      title: resolvedStats?.title ?? null,
-    });
+    const svg = traceSync("render.chart", () =>
+      renderChart({
+        username,
+        platform: platformLabel(normalized),
+        modes: results.map((r) => r.mode) as any,
+        points: results.map((r) => r.points) as any,
+        months,
+        themeName: theme,
+        title: resolvedStats?.title ?? null,
+      }),
+    );
 
     sendImage(req, res, svg, HISTORY_CACHE_TTL);
   } catch (err) {

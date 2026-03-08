@@ -4,6 +4,7 @@ import {
   mapLichessStats,
   mapLichessRecentGames,
 } from "./mappers/lichess.mapper.js";
+import { traceAsync } from "../services/telemetry.service.js";
 
 const BASE = "https://lichess.org/api";
 const HEADERS = {
@@ -12,49 +13,64 @@ const HEADERS = {
 };
 
 async function fetchRecentResults(username: string, limit = 10) {
-  try {
-    const res = await fetch(
-      `${BASE}/games/user/${username}?max=${limit}&moves=false&perfType=bullet,blitz,rapid`,
-      {
-        headers: {
-          Accept: "application/x-ndjson",
-          "User-Agent": "chess-stats-api/1.0",
-        },
-      },
-    );
-    if (!res.ok) return [];
-    const text = await res.text();
-    const games = text
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-    return mapLichessRecentGames(games, username);
-  } catch {
-    return [];
-  }
+  return traceAsync(
+    "lichess.fetchRecentResults",
+    async () => {
+      try {
+        const res = await fetch(
+          `${BASE}/games/user/${username}?max=${limit}&moves=false&perfType=bullet,blitz,rapid`,
+          {
+            headers: {
+              Accept: "application/x-ndjson",
+              "User-Agent": "chess-stats-api/1.0",
+            },
+          },
+        );
+        if (!res.ok) return [];
+        const text = await res.text();
+        const games = text
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => {
+            try {
+              return JSON.parse(line);
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean);
+        return mapLichessRecentGames(games, username);
+      } catch {
+        return [];
+      }
+    },
+    { "chess.platform": "lichess", "chess.username": username },
+  );
 }
 
 export async function fetchLichess(username: string): Promise<ChessStats> {
-  const res = await fetch(`${BASE}/user/${username}`, { headers: HEADERS });
+  return traceAsync(
+    "lichess.fetchStats",
+    async () => {
+      const res = await fetch(`${BASE}/user/${username}`, {
+        headers: HEADERS,
+      });
 
-  if (res.status === 404)
-    throw Object.assign(new Error(`Lichess user "${username}" not found`), {
-      status: 404,
-    });
-  if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
+      if (res.status === 404)
+        throw Object.assign(
+          new Error(`Lichess user "${username}" not found`),
+          { status: 404 },
+        );
+      if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
 
-  const user = (await res.json()) as LichessUser;
-  const recentGames = await fetchRecentResults(username);
+      const user = (await res.json()) as LichessUser;
+      const recentGames = await fetchRecentResults(username);
 
-  return mapLichessStats(user, recentGames);
+      return mapLichessStats(user, recentGames);
+    },
+    { "chess.platform": "lichess", "chess.username": username },
+  );
 }
 
 export async function fetchLichessHistory(
@@ -62,61 +78,75 @@ export async function fetchLichessHistory(
   mode = "blitz",
   months = 6,
 ) {
-  mode = mode.toLowerCase();
+  return traceAsync(
+    "lichess.fetchHistory",
+    async () => {
+      mode = mode.toLowerCase();
 
-  const LICHESS_MODE_NAMES: Record<string, string> = {
-    bullet: "Bullet",
-    blitz: "Blitz",
-    rapid: "Rapid",
-    puzzle: "Puzzles",
-  };
-  const modeName = LICHESS_MODE_NAMES[mode];
-  if (!modeName)
-    throw Object.assign(new Error(`Unknown mode "${mode}"`), { status: 400 });
+      const LICHESS_MODE_NAMES: Record<string, string> = {
+        bullet: "Bullet",
+        blitz: "Blitz",
+        rapid: "Rapid",
+        puzzle: "Puzzles",
+      };
+      const modeName = LICHESS_MODE_NAMES[mode];
+      if (!modeName)
+        throw Object.assign(new Error(`Unknown mode "${mode}"`), {
+          status: 400,
+        });
 
-  const res = await fetch(
-    `https://lichess.org/api/user/${username}/rating-history`,
-    { headers: { ...HEADERS, Accept: "application/json" } },
+      const res = await fetch(
+        `https://lichess.org/api/user/${username}/rating-history`,
+        { headers: { ...HEADERS, Accept: "application/json" } },
+      );
+      if (res.status === 404)
+        throw Object.assign(
+          new Error(`Lichess user "${username}" not found`),
+          { status: 404 },
+        );
+      if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
+
+      const history = (await res.json()) as Array<{
+        name: string;
+        points: [number, number, number, number][];
+      }>;
+      const entry = history.find((h) => h.name === modeName);
+      if (!entry || entry.points.length === 0) return { mode, points: [] };
+
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - months);
+
+      const points = entry.points
+        .map(([year, month0, day, rating]) => ({
+          date: new Date(year, month0, day),
+          rating,
+        }))
+        .filter((p) => p.date >= cutoff);
+
+      const MAX_POINTS = 120;
+      const step = Math.max(1, Math.floor(points.length / MAX_POINTS));
+      const sampled = [
+        ...points.filter((_, i) => i % step === 0),
+        points[points.length - 1],
+      ].filter(Boolean);
+
+      const seen = new Set<number>();
+      const deduped = sampled.filter((p) => {
+        const k = p.date.getTime();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+
+      return { mode, points: deduped };
+    },
+    {
+      "chess.platform": "lichess",
+      "chess.username": username,
+      "chess.mode": mode,
+      "chess.months": months,
+    },
   );
-  if (res.status === 404)
-    throw Object.assign(new Error(`Lichess user "${username}" not found`), {
-      status: 404,
-    });
-  if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
-
-  const history = (await res.json()) as Array<{
-    name: string;
-    points: [number, number, number, number][];
-  }>;
-  const entry = history.find((h) => h.name === modeName);
-  if (!entry || entry.points.length === 0) return { mode, points: [] };
-
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
-
-  const points = entry.points
-    .map(([year, month0, day, rating]) => ({
-      date: new Date(year, month0, day),
-      rating,
-    }))
-    .filter((p) => p.date >= cutoff);
-
-  const MAX_POINTS = 120;
-  const step = Math.max(1, Math.floor(points.length / MAX_POINTS));
-  const sampled = [
-    ...points.filter((_, i) => i % step === 0),
-    points[points.length - 1],
-  ].filter(Boolean);
-
-  const seen = new Set<number>();
-  const deduped = sampled.filter((p) => {
-    const k = p.date.getTime();
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-
-  return { mode, points: deduped };
 }
 
 export async function fetchLichessActivity(
@@ -124,58 +154,73 @@ export async function fetchLichessActivity(
   months = 3,
   mode?: string,
 ) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
-  const since = cutoff.getTime();
+  return traceAsync(
+    "lichess.fetchActivity",
+    async () => {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - months);
+      const since = cutoff.getTime();
 
-  const perfTypes = mode ?? "bullet,blitz,rapid";
-  const res = await fetch(
-    `${BASE}/games/user/${username}?since=${since}&moves=false&perfType=${perfTypes}`,
+      const perfTypes = mode ?? "bullet,blitz,rapid";
+      const res = await fetch(
+        `${BASE}/games/user/${username}?since=${since}&moves=false&perfType=${perfTypes}`,
+        {
+          headers: {
+            Accept: "application/x-ndjson",
+            "User-Agent": "chess-stats-api/1.0",
+          },
+        },
+      );
+
+      if (res.status === 404)
+        throw Object.assign(
+          new Error(`Lichess user "${username}" not found`),
+          { status: 404 },
+        );
+      if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
+
+      const text = await res.text();
+      const games = text
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+
+      const daily = new Map<string, { games: number; wins: number }>();
+      const userLower = username.toLowerCase();
+
+      for (const g of games) {
+        const date = new Date(g.createdAt).toISOString().slice(0, 10);
+        const entry = daily.get(date) ?? { games: 0, wins: 0 };
+        entry.games++;
+        const isWhite =
+          (g.players?.white?.user?.id ?? "").toLowerCase() === userLower;
+        const winner = g.winner;
+        if (
+          (isWhite && winner === "white") ||
+          (!isWhite && winner === "black")
+        ) {
+          entry.wins++;
+        }
+        daily.set(date, entry);
+      }
+
+      return Array.from(daily.entries())
+        .map(([date, d]) => ({ date, games: d.games, wins: d.wins }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    },
     {
-      headers: {
-        Accept: "application/x-ndjson",
-        "User-Agent": "chess-stats-api/1.0",
-      },
+      "chess.platform": "lichess",
+      "chess.username": username,
+      "chess.months": months,
+      ...(mode && { "chess.mode": mode }),
     },
   );
-
-  if (res.status === 404)
-    throw Object.assign(new Error(`Lichess user "${username}" not found`), {
-      status: 404,
-    });
-  if (!res.ok) throw new Error(`Lichess API error (${res.status})`);
-
-  const text = await res.text();
-  const games = text
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
-
-  const daily = new Map<string, { games: number; wins: number }>();
-  const userLower = username.toLowerCase();
-
-  for (const g of games) {
-    const date = new Date(g.createdAt).toISOString().slice(0, 10);
-    const entry = daily.get(date) ?? { games: 0, wins: 0 };
-    entry.games++;
-    const isWhite =
-      (g.players?.white?.user?.id ?? "").toLowerCase() === userLower;
-    const winner = g.winner;
-    if ((isWhite && winner === "white") || (!isWhite && winner === "black")) {
-      entry.wins++;
-    }
-    daily.set(date, entry);
-  }
-
-  return Array.from(daily.entries())
-    .map(([date, d]) => ({ date, games: d.games, wins: d.wins }))
-    .sort((a, b) => a.date.localeCompare(b.date));
 }

@@ -12,6 +12,8 @@ import {
   isKnownPlatform,
   normalizePlatform,
 } from "../services/platform.service";
+import { trace } from "@opentelemetry/api";
+import { traceAsync, traceSync } from "../services/telemetry.service";
 
 export async function getCombinedCard(req: Request, res: Response) {
   const { platform, username } = req.params;
@@ -34,36 +36,58 @@ export async function getCombinedCard(req: Request, res: Response) {
       );
     }
 
-    // Stats + all mode histories in parallel
-    const sKey = cache.statsCacheKey(normalized, username);
-    let combinedStats = cache.getStats(sKey);
-    const statsPromise = combinedStats
-      ? Promise.resolve(combinedStats)
-      : (async () => {
-          combinedStats = await fetchStats(normalized, username);
-          cache.setStats(sKey, combinedStats);
-          return combinedStats;
-        })();
-
-    const historyPromises = modes.map(async (mode) => {
-      const hKey = cache.historyCacheKey(normalized, username, mode, months);
-      let result = cache.getHistory(hKey);
-      if (!result) {
-        result = await fetchHistory(normalized, username, mode, months);
-        cache.setHistory(hKey, result);
-      }
-      return result as {
-        mode: string;
-        points: Array<{ date: Date; rating: number }>;
-      };
+    trace.getActiveSpan()?.setAttributes({
+      "chess.platform": normalized,
+      "chess.username": username,
+      "chess.modes": modes.join(","),
+      "chess.months": months,
+      "chess.theme": theme,
     });
 
-    const [resolvedStats, ...historySeries] = await Promise.all([
-      statsPromise,
-      ...historyPromises,
-    ]);
+    const sKey = cache.statsCacheKey(normalized, username);
 
-    const svg = renderCombined(resolvedStats, historySeries, modes, theme);
+    const [resolvedStats, ...historySeries] = await traceAsync(
+      "controller.combined.resolve",
+      () => {
+        const statsPromise = (async () => {
+          const cached = cache.getStats(sKey);
+          if (cached) return cached;
+          const fresh = await fetchStats(normalized, username);
+          cache.setStats(sKey, fresh);
+          return fresh;
+        })();
+
+        const historyPromises = modes.map(async (mode) => {
+          const hKey = cache.historyCacheKey(
+            normalized,
+            username,
+            mode,
+            months,
+          );
+          let result = cache.getHistory(hKey);
+          if (!result) {
+            result = await fetchHistory(normalized, username, mode, months);
+            cache.setHistory(hKey, result);
+          }
+          return result as {
+            mode: string;
+            points: Array<{ date: Date; rating: number }>;
+          };
+        });
+
+        return Promise.all([statsPromise, ...historyPromises]);
+      },
+      {
+        "chess.platform": normalized,
+        "chess.username": username,
+        "chess.modes": modes.join(","),
+        "chess.months": months,
+      },
+    );
+
+    const svg = traceSync("render.combined", () =>
+      renderCombined(resolvedStats, historySeries, modes, theme),
+    );
     sendImage(req, res, svg, HISTORY_CACHE_TTL);
   } catch (err) {
     const status = err.status ?? 500;

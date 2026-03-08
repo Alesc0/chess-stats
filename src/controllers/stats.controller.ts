@@ -11,6 +11,8 @@ import {
   isKnownPlatform,
   normalizePlatform,
 } from "../services/platform.service";
+import { trace } from "@opentelemetry/api";
+import { traceAsync, traceSync } from "../services/telemetry.service";
 
 export async function getStatsCard(req: Request, res: Response) {
   const { platform, username } = req.params;
@@ -28,19 +30,37 @@ export async function getStatsCard(req: Request, res: Response) {
       });
     }
 
-    let stats = cache.getStats(key);
+    trace.getActiveSpan()?.setAttributes({
+      "chess.platform": normalized,
+      "chess.username": username,
+      "chess.format": String(format),
+      "chess.theme": theme,
+    });
 
-    if (!stats) {
-      logger.info({ platform: normalized, username }, "fetching stats");
-      stats = await fetchStats(normalized, username);
-      cache.setStats(key, stats);
-    }
+    const stats = await traceAsync(
+      "controller.stats.resolve",
+      async () => {
+        const cached = cache.getStats(key);
+        if (cached) return cached;
+        logger.info({ platform: normalized, username }, "fetching stats");
+        const fresh = await fetchStats(normalized, username);
+        cache.setStats(key, fresh);
+        return fresh;
+      },
+      {
+        "chess.platform": normalized,
+        "chess.username": username,
+        "chess.format": String(format),
+      },
+    );
 
     if (format === "json") {
       return res.json(stats);
     }
 
-    const svg = statsCard(stats, theme, modes);
+    const svg = traceSync("render.stats", () => statsCard(stats, theme, modes), {
+      "chess.theme": theme,
+    });
     sendImage(req, res, svg, STATS_CACHE_TTL);
   } catch (err) {
     const status = err.status ?? 500;
