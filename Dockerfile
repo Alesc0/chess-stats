@@ -5,6 +5,9 @@ LABEL org.opencontainers.image.version="${VERSION}"
 
 WORKDIR /app
 
+# Install fonts required for SVG->PNG text rendering (resvg needs system fonts)
+RUN apk add --no-cache fontconfig ttf-dejavu
+
 # Install production dependencies only
 COPY package.json ./
 RUN bun install --production

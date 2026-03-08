@@ -80,6 +80,36 @@ services:
 docker compose up -d
 ```
 
+### Fonts for PNG preview
+
+When running the server in Docker (or when converting SVG to PNG on the host), the rasterizer (resvg) needs access to system fonts. If fonts are missing you may see images render correctly but text is absent in the generated PNGs.
+
+Recommended options:
+
+- Alpine-based Docker image (the project's default): add the following to the `Dockerfile` before installing dependencies:
+
+```dockerfile
+# Install fonts required for SVG->PNG text rendering (resvg needs system fonts)
+RUN apk add --no-cache fontconfig ttf-dejavu
+```
+
+- Debian / Ubuntu (host or Debian-based container):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y fontconfig fonts-dejavu-core
+```
+
+- Fedora / RHEL (host or container):
+
+```bash
+sudo dnf install -y fontconfig dejavu-sans-fonts
+```
+
+After installing fonts, restart your container or server so the renderer can pick up the new font installations.
+
+If you prefer not to modify the host or image, another option is to embed a webfont inside the SVG (via an `@font-face` with a base64-encoded WOFF/WOFF2) prior to conversion — this is more portable but increases SVG size.
+
 ---
 
 ## Endpoints
