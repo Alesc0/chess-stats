@@ -203,8 +203,7 @@ export function renderChart(opts: {
   });
   const glow = renderTitleGlow({ title, width: W, height: H });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
-  aria-label="${esc(username)} ${esc(modesLabel)} rating history>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(username)} ${esc(modesLabel)} rating history">
 
   <title>${esc(username)} – ${esc(modesLabel)} rating history (${esc(platform)})</title>
   
