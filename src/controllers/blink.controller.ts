@@ -13,6 +13,8 @@ import {
   normalizePlatform,
   platformLabel,
 } from "../services/platform.service";
+import { trace } from "@opentelemetry/api";
+import { traceAsync, traceSync } from "../services/telemetry.service";
 
 export async function getBlinkCard(req: Request, res: Response) {
   const { platform, username } = req.params;
@@ -35,44 +37,66 @@ export async function getBlinkCard(req: Request, res: Response) {
       );
     }
 
-    // Stats + all mode histories in parallel
+    trace.getActiveSpan()?.setAttributes({
+      "chess.platform": normalized,
+      "chess.username": username,
+      "chess.modes": modes.join(","),
+      "chess.months": months,
+      "chess.theme": theme,
+    });
+
     const sKey = cache.statsCacheKey(normalized, username);
-    let blinkStats = cache.getStats(sKey);
-    const statsPromise = blinkStats
-      ? Promise.resolve(blinkStats)
-      : (async () => {
-          blinkStats = await fetchStats(normalized, username);
-          cache.setStats(sKey, blinkStats);
-          return blinkStats;
+
+    const [resolvedStats, ...historySeries] = await traceAsync(
+      "controller.blink.resolve",
+      () => {
+        const statsPromise = (async () => {
+          const cached = cache.getStats(sKey);
+          if (cached) return cached;
+          const fresh = await fetchStats(normalized, username);
+          cache.setStats(sKey, fresh);
+          return fresh;
         })();
 
-    const historyPromises = modes.map(async (mode) => {
-      const hKey = cache.historyCacheKey(normalized, username, mode, months);
-      let result = cache.getHistory(hKey);
-      if (!result) {
-        result = await fetchHistory(normalized, username, mode, months);
-        cache.setHistory(hKey, result);
-      }
-      return result as {
-        mode: string;
-        points: Array<{ date: Date; rating: number }>;
-      };
-    });
+        const historyPromises = modes.map(async (mode) => {
+          const hKey = cache.historyCacheKey(
+            normalized,
+            username,
+            mode,
+            months,
+          );
+          let result = cache.getHistory(hKey);
+          if (!result) {
+            result = await fetchHistory(normalized, username, mode, months);
+            cache.setHistory(hKey, result);
+          }
+          return result as {
+            mode: string;
+            points: Array<{ date: Date; rating: number }>;
+          };
+        });
 
-    const [resolvedStats, ...historySeries] = await Promise.all([
-      statsPromise,
-      ...historyPromises,
-    ]);
+        return Promise.all([statsPromise, ...historyPromises]);
+      },
+      {
+        "chess.platform": normalized,
+        "chess.username": username,
+        "chess.modes": modes.join(","),
+        "chess.months": months,
+      },
+    );
 
-    const svg = renderBlink({
-      stats: resolvedStats,
-      username: resolvedStats?.username ?? username,
-      platform: platformLabel(normalized),
-      modes: historySeries.map((r) => r.mode) as any,
-      points: historySeries.map((r) => r.points) as any,
-      months,
-      themeName: theme,
-    });
+    const svg = traceSync("render.blink", () =>
+      renderBlink({
+        stats: resolvedStats,
+        username: resolvedStats?.username ?? username,
+        platform: platformLabel(normalized),
+        modes: historySeries.map((r) => r.mode) as any,
+        points: historySeries.map((r) => r.points) as any,
+        months,
+        themeName: theme,
+      }),
+    );
 
     sendImage(req, res, svg, HISTORY_CACHE_TTL);
   } catch (err) {

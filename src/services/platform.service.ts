@@ -10,6 +10,7 @@ import {
 } from "../providers/lichess";
 import type { DailyActivity } from "../render/activity";
 import type { ChessStats } from "../types";
+import { traceAsync } from "./telemetry.service";
 
 export type HistoryResult = {
   mode: string;
@@ -45,13 +46,19 @@ export async function fetchStats(
   platform: string,
   username: string,
 ): Promise<ChessStats> {
-  if (isChessDotCom(platform)) return fetchChessDotCom(username);
-  if (isLichess(platform)) return fetchLichess(username);
-  throw Object.assign(
-    new Error(
-      `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-    ),
-    { status: 400 },
+  return traceAsync(
+    "platform.fetchStats",
+    async () => {
+      if (isChessDotCom(platform)) return fetchChessDotCom(username);
+      if (isLichess(platform)) return fetchLichess(username);
+      throw Object.assign(
+        new Error(
+          `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+        ),
+        { status: 400 },
+      );
+    },
+    { "chess.platform": platform, "chess.username": username },
   );
 }
 
@@ -61,14 +68,26 @@ export async function fetchHistory(
   mode: string,
   months: number,
 ): Promise<HistoryResult> {
-  if (isChessDotCom(platform))
-    return fetchChessDotComHistory(username, mode, months);
-  if (isLichess(platform)) return fetchLichessHistory(username, mode, months);
-  throw Object.assign(
-    new Error(
-      `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-    ),
-    { status: 400 },
+  return traceAsync(
+    "platform.fetchHistory",
+    async () => {
+      if (isChessDotCom(platform))
+        return fetchChessDotComHistory(username, mode, months);
+      if (isLichess(platform))
+        return fetchLichessHistory(username, mode, months);
+      throw Object.assign(
+        new Error(
+          `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+        ),
+        { status: 400 },
+      );
+    },
+    {
+      "chess.platform": platform,
+      "chess.username": username,
+      "chess.mode": mode,
+      "chess.months": months,
+    },
   );
 }
 
@@ -78,13 +97,25 @@ export async function fetchActivity(
   months: number,
   mode?: string,
 ): Promise<DailyActivity[]> {
-  if (isChessDotCom(platform))
-    return fetchChessDotComActivity(username, months, mode);
-  if (isLichess(platform)) return fetchLichessActivity(username, months, mode);
-  throw Object.assign(
-    new Error(
-      `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
-    ),
-    { status: 400 },
+  return traceAsync(
+    "platform.fetchActivity",
+    async () => {
+      if (isChessDotCom(platform))
+        return fetchChessDotComActivity(username, months, mode);
+      if (isLichess(platform))
+        return fetchLichessActivity(username, months, mode);
+      throw Object.assign(
+        new Error(
+          `Unknown platform "${platform}". Use "chessdotcom" or "lichess".`,
+        ),
+        { status: 400 },
+      );
+    },
+    {
+      "chess.platform": platform,
+      "chess.username": username,
+      "chess.months": months,
+      ...(mode && { "chess.mode": mode }),
+    },
   );
 }

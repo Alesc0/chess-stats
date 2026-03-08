@@ -35,10 +35,14 @@ node dist/src/index.js
 
 ### Environment variables
 
-| Variable        | Default | Description                                                    |
-| --------------- | ------- | -------------------------------------------------------------- |
-| `PORT`          | `3000`  | Port the server listens on                                     |
-| `DEFAULT_THEME` | `dark`  | Theme applied to all endpoints when `?theme=` is not specified |
+| Variable                       | Default                 | Description                                                    |
+| ------------------------------ | ----------------------- | -------------------------------------------------------------- |
+| `PORT`                         | `3000`                  | Port the server listens on                                     |
+| `DEFAULT_THEME`                | `dark`                  | Theme applied to all endpoints when `?theme=` is not specified |
+| `OTEL_ENABLED`                 | `false`                 | Enable OpenTelemetry instrumentation                           |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`  | `http://localhost:4318` | OTLP endpoint for traces and metrics                           |
+| `OTEL_SERVICE_NAME`            | `chess-stats`           | Service name for OpenTelemetry                                 |
+| `OTEL_ENVIRONMENT`             | `development`           | Environment name for OpenTelemetry                             |
 
 Run with Bun (recommended) or set env vars before running the built Node app:
 
@@ -47,6 +51,20 @@ DEFAULT_THEME=nord PORT=8080 bun src/index.ts
 # or after building
 DEFAULT_THEME=nord PORT=8080 node dist/src/index.js
 ```
+
+#### OpenTelemetry Setup (Optional)
+
+OpenTelemetry provides distributed tracing and metrics for monitoring your chess-stats service. To enable:
+
+1. Set `OTEL_ENABLED=true` or configure `OTEL_EXPORTER_OTLP_ENDPOINT`
+2. Point to your OTLP-compatible backend (Jaeger, Tempo, Grafana, etc.)
+
+```bash
+# Example with Jaeger locally
+OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 bun src/index.ts
+```
+
+The service will automatically instrument HTTP requests, external fetch calls, and Express routes.
 
 ---
 
