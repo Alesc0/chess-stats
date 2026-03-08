@@ -5,6 +5,7 @@ import { renderBlink } from "../render/blink";
 import { resolveTheme } from "../render/themes";
 import { errorSvg, getModes } from "../render/utils";
 import * as cache from "../services/cache.service";
+import { sendImage } from "../services/png.service";
 import {
   fetchHistory,
   fetchStats,
@@ -73,10 +74,7 @@ export async function getBlinkCard(req: Request, res: Response) {
       themeName: theme,
     });
 
-    res
-      .set("Content-Type", "image/svg+xml")
-      .set("Cache-Control", `public, max-age=${HISTORY_CACHE_TTL / 1000}`)
-      .send(svg);
+    sendImage(req, res, svg, HISTORY_CACHE_TTL);
   } catch (err) {
     const status = err.status ?? 500;
     logger[status >= 500 ? "error" : "warn"](
@@ -90,9 +88,6 @@ export async function getBlinkCard(req: Request, res: Response) {
       },
       "blink error",
     );
-    res
-      .status(status)
-      .set("Content-Type", "image/svg+xml")
-      .send(errorSvg(err.message, C));
+    sendImage(req, res, errorSvg(err.message, C), 0, status);
   }
 }
