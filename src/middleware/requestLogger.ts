@@ -13,6 +13,7 @@ export const requestLogger = pinoHttp({
     req: (req: any) => ({
       method: req.method,
       url: req.url,
+      userAgent: req.headers?.["user-agent"] ?? null,
       remoteAddress:
         req.headers?.["x-forwarded-for"]?.split(",")[0].trim() ??
         req.connection?.remoteAddress,
