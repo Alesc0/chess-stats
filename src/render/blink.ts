@@ -81,6 +81,27 @@ export function renderBlink(opts: {
   role="img" aria-label="Chess stats blink view for ${username}">
 
   <title>Chess Stats – ${username} (blink)</title>
+
+  <style>
+    @keyframes showCard {
+      0%                                 { opacity: 1; }
+      ${pct}%                            { opacity: 1; }
+      ${(parseFloat(pct) + 2).toFixed(1)}%  { opacity: 0; }
+      ${(100 - 2).toFixed(1)}%              { opacity: 0; }
+      100%                               { opacity: 1; }
+    }
+    @keyframes showChart {
+      0%                                 { opacity: 0; }
+      ${pct}%                            { opacity: 0; }
+      ${(parseFloat(pct) + 2).toFixed(1)}%  { opacity: 1; }
+      ${(100 - 2).toFixed(1)}%              { opacity: 1; }
+      100%                               { opacity: 0; }
+    }
+    .blink-card  { animation: showCard  ${totalCycle}s ease-in-out infinite; }
+    .blink-chart { animation: showChart ${totalCycle}s ease-in-out infinite; }
+  </style>
+
+  ${statsGroup}
   ${chartGroup}
 
 </svg>`;
