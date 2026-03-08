@@ -1,4 +1,6 @@
 import { MODE } from "../types";
+import { ChessGameMode } from "../types/chess";
+import { BLITZ_ICON, BULLET_ICON, PUZZLE_ICON, RAPID_ICON } from "./icons";
 import { ThemeColors } from "./themes";
 
 const VALID_MODES = new Set(["bullet", "blitz", "rapid", "puzzle"]);
@@ -55,3 +57,13 @@ export function getModes(modes: any): MODE[] | null {
         .map((m) => m as MODE)
     : [MODE.bullet, MODE.blitz, MODE.rapid];
 }
+
+/**
+ * Get icon by Gamemode
+ */
+export const getIconByType: Record<ChessGameMode, (c: string) => string> = {
+  bullet: BULLET_ICON,
+  blitz: BLITZ_ICON,
+  rapid: RAPID_ICON,
+  puzzle: PUZZLE_ICON,
+};

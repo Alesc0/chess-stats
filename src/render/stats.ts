@@ -1,8 +1,9 @@
 import { renderHeader } from "./header.js";
 import { resolveTheme, type ThemeColors } from "./themes.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
-import { esc, fmt } from "./utils.js";
-import { ChessStats, MODE } from "../types.js";
+import { esc, fmt, getIconByType } from "./utils.js";
+import { ChessStats, GameResult, MODE } from "../types.js";
+import type { ChessGameMode } from "../types/chess.js";
 
 const W = 550;
 const H = 250;
@@ -27,30 +28,31 @@ const FS_SECTION_GAMES = 12;
 const RATING_Y_START = 100;
 const RATING_Y_END = 168;
 
-function recentGamesRow(recentGames: any[], C: ThemeColors): string {
-  const TYPE_LABEL: Record<string, string> = {
-    bullet: "bul",
-    blitz: "blz",
-    rapid: "rap",
-  };
-  if (!recentGames || recentGames.length === 0) return "";
-  const DOT_R = 13;
-  const DOT_SPACING = 30;
+const RECENT_TILE_R = 13;
+const RECENT_TILE_SPACING = 30;
+const RECENT_ROW_Y = 210;
+const RECENT_ICON_SIZE = 16;
+const RECENT_ICON_SCALE = RECENT_ICON_SIZE / 24;
+
+const RESULT_COLOR = (result: GameResult["result"], C: ThemeColors): string =>
+  result === "win" ? C.win : result === "loss" ? C.loss : C.draw;
+
+function recentGamesRow(recentGames: GameResult[], C: ThemeColors): string {
+  if (!recentGames?.length) return "";
+
   const startX = RATINGS_X + 10;
-  const y = 210;
+
   return recentGames
-    .map((game, i) => {
-      const { result, type } =
-        typeof game === "string" ? { result: game, type: "blitz" } : game;
-      const cx = startX + i * DOT_SPACING;
-      const color =
-        result === "win" ? C.win : result === "loss" ? C.loss : C.draw;
-      const letter = result === "win" ? "W" : result === "loss" ? "L" : "D";
-      const typeLabel = TYPE_LABEL[type] ?? type.slice(0, 3);
+    .map(({ result, type }, i) => {
+      const cx = startX + i * RECENT_TILE_SPACING;
+      const color = RESULT_COLOR(result, C);
+      const icon = getIconByType[type as ChessGameMode](C.recentIcon);
+
       return `
-        <rect rx="3" ry="3" x="${cx - DOT_R}" y="${y - DOT_R}" width="${DOT_R * 2}" height="${DOT_R * 2}" fill="${color}" opacity="0.85"/>
-        <text x="${cx}" y="${y + 4}" text-anchor="middle" fill="${C.bg}" font-size="9" font-family="monospace" font-weight="bold">${letter}</text>
-        <text x="${cx}" y="${y + DOT_R + 10}" text-anchor="middle" fill="${C.muted}" font-size="8" font-family="sans-serif" opacity="0.8">${typeLabel}</text>`;
+        <rect rx="3" ry="3" x="${cx - RECENT_TILE_R}" y="${RECENT_ROW_Y - RECENT_TILE_R}"
+              width="${RECENT_TILE_R * 2}" height="${RECENT_TILE_R * 2}"
+              fill="${color}" opacity="0.85"/>
+        <g transform="translate(${cx} ${RECENT_ROW_Y}) scale(${RECENT_ICON_SCALE}) translate(-12 -12)">${icon}</g>`;
     })
     .join("");
 }
