@@ -122,8 +122,7 @@ export async function fetchChessDotComHistory(
       }
 
       const deduped = points.filter(
-        (p, i) =>
-          i === 0 || p.date.getTime() !== points[i - 1].date.getTime(),
+        (p, i) => i === 0 || p.date.getTime() !== points[i - 1].date.getTime(),
       );
 
       return { mode, points: deduped };

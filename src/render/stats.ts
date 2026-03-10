@@ -236,7 +236,7 @@ export function statsCard(
   
   <text x="${DIVIDER_X + 10}" y="70" fill="${C.muted}" font-size="${FS_SECTION_LBL}" font-family="sans-serif" letter-spacing="1.5" opacity="0.8">RECORD</text>
 
-  <text x="${DIVIDER_X + COL_W * 2}" y="70" fill="${C.muted}" font-size="${FS_SECTION_GAMES}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
+  <text x="${W - (total.toLocaleString().length + "games".length) * 8.5}" y="70" fill="${C.muted}" font-size="${FS_SECTION_GAMES}" font-family="monospace">${total > 0 ? `${total.toLocaleString()} games` : ""}</text>
 
   <line x1="10" y1="78" x2="${DIVIDER_X - 10}" y2="75" stroke="${C.border}" stroke-width="1" opacity="0.6"/>
 

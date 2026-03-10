@@ -1,6 +1,6 @@
 import { MODE } from "../types.js";
 import { renderHeader } from "./header.js";
-import { resolveTheme } from "./themes.js";
+import { resolveTheme, type ThemeColors } from "./themes.js";
 import { renderStarEffect, renderTitleGlow } from "./titleEffects.js";
 import { esc, lerp } from "./utils.js";
 
@@ -16,6 +16,111 @@ const H = 250;
 const PAD = { top: 58, right: 100, bottom: 40, left: 50 };
 const CHART_W = W - PAD.left - PAD.right;
 const CHART_H = H - PAD.top - PAD.bottom;
+
+export function buildMiniChart({
+  series,
+  C,
+  bounds: { left, right, top, bottom },
+  clipId = "miniChartClip",
+  showGrid = true,
+  showEndDots = true,
+}: {
+  series: Array<{ mode: string; points: Array<{ date: Date; rating: number }> }>;
+  C: ThemeColors;
+  bounds: { left: number; right: number; top: number; bottom: number };
+  clipId?: string;
+  showGrid?: boolean;
+  showEndDots?: boolean;
+}): {
+  svg: string;
+  toX: (t: number) => number;
+  toY: (r: number) => number;
+  rMin: number;
+  rMax: number;
+  minT: number;
+  maxT: number;
+  multi: boolean;
+} {
+  const valid = series.filter((s) => s.points && s.points.length >= 2);
+  const midX = (left + right) / 2;
+  const midY = (top + bottom) / 2;
+  const noopFn = (_: number) => 0;
+
+  if (valid.length === 0) {
+    return {
+      svg: `<text x="${midX}" y="${midY + 4}" text-anchor="middle"
+      fill="${C.muted}" font-size="11" font-family="monospace">no data</text>`,
+      toX: noopFn,
+      toY: noopFn,
+      rMin: 0,
+      rMax: 0,
+      minT: 0,
+      maxT: 0,
+      multi: false,
+    };
+  }
+
+  const multi = valid.length > 1;
+  const allRatings = valid.flatMap((s) => s.points.map((p) => p.rating));
+  const allDates = valid.flatMap((s) => s.points.map((p) => p.date.getTime()));
+  const minR = Math.min(...allRatings);
+  const maxR = Math.max(...allRatings);
+  const minT = Math.min(...allDates);
+  const maxT = Math.max(...allDates);
+  const rPad = Math.max(10, Math.round((maxR - minR) * 0.18));
+  const rMin = minR - rPad;
+  const rMax = maxR + rPad;
+
+  const toX = (t: number) => lerp(t, minT, maxT, left, right);
+  const toY = (r: number) => lerp(r, rMin, rMax, bottom, top);
+
+  const gridFracs = multi ? [0.5] : [0.25, 0.5, 0.75];
+  const grid = showGrid
+    ? gridFracs
+        .map((f) => {
+          const gy = lerp(f, 0, 1, bottom, top);
+          const gVal = Math.round(lerp(f, 0, 1, rMin, rMax));
+          return `
+    <line x1="${left}" y1="${gy.toFixed(1)}" x2="${right}" y2="${gy.toFixed(1)}"
+      stroke="${C.border}" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+    <text x="${left - 3}" y="${(gy + 3.5).toFixed(1)}" text-anchor="end"
+      fill="${C.muted}" font-size="9" font-family="monospace" opacity="0.7">${gVal}</text>`;
+        })
+        .join("")
+    : "";
+
+  const paths = valid
+    .map(({ mode, points }) => {
+      const color = (C as any)[mode] ?? "#58a6ff";
+      const pts = points
+        .map(
+          (p) =>
+            `${toX(p.date.getTime()).toFixed(1)},${toY(p.rating).toFixed(1)}`,
+        )
+        .join(" ");
+      const fX = toX(points[0].date.getTime()).toFixed(1);
+      const lX = toX(points[points.length - 1].date.getTime()).toFixed(1);
+      const area = `M${fX},${bottom} L${pts.replace(/ /g, " L")} L${lX},${bottom} Z`;
+      const endX = toX(points[points.length - 1].date.getTime()).toFixed(1);
+      const endY = toY(points[points.length - 1].rating).toFixed(1);
+      return `
+    <path d="${area}" fill="${color}" opacity="${multi ? 0.07 : 0.14}"/>
+    <polyline points="${pts}" fill="none" stroke="${color}"
+      stroke-width="${multi ? 1.5 : 2}" stroke-linejoin="round" stroke-linecap="round"/>
+    ${showEndDots ? `<circle cx="${endX}" cy="${endY}" r="${multi ? 2.5 : 3.5}"
+      fill="${color}" stroke="${C.bg}" stroke-width="1.5"/>` : ""}`;
+    })
+    .join("");
+
+  const svg = `
+  ${grid}
+  <clipPath id="${clipId}">
+    <rect x="${left}" y="${top}" width="${right - left}" height="${bottom - top}"/>
+  </clipPath>
+  <g clip-path="url(#${clipId})">${paths}</g>`;
+
+  return { svg, toX, toY, rMin, rMax, minT, maxT, multi };
+}
 
 function niceStep(range: number, targetTicks: number): number {
   const raw = range / targetTicks;
@@ -74,22 +179,23 @@ export function renderChart(opts: {
     </svg>`;
   }
 
-  const allRatings = allSeries.flatMap((s) => s.points.map((p) => p.rating));
-  const allDates = allSeries.flatMap((s) =>
-    s.points.map((p) => p.date.getTime()),
-  );
-
-  const minR = Math.min(...allRatings);
-  const maxR = Math.max(...allRatings);
-  const minT = Math.min(...allDates);
-  const maxT = Math.max(...allDates);
-
-  const rPad = Math.max(20, Math.round((maxR - minR) * 0.12));
-  const rMin = minR - rPad;
-  const rMax = maxR + rPad;
-
-  const toX = (t: number) => lerp(t, minT, maxT, 0, CHART_W);
-  const toY = (r: number) => lerp(r, rMin, rMax, CHART_H, 0);
+  const {
+    svg: chartPaths,
+    toX,
+    toY,
+    rMin,
+    rMax,
+    minT,
+    maxT,
+    multi: multiMode,
+  } = buildMiniChart({
+    series: allSeries,
+    C: COLORS,
+    bounds: { left: 0, right: CHART_W, top: 0, bottom: CHART_H },
+    clipId: "chartClip",
+    showGrid: false,
+    showEndDots: false,
+  });
 
   const yStep = niceStep(rMax - rMin, 5);
   const yStart = Math.ceil(rMin / yStep) * yStep;
@@ -105,22 +211,11 @@ export function renderChart(opts: {
     i === TARGET_X_TICKS - 1 ? maxT : minT + i * timeStep,
   );
   const spanMonths = (maxT - minT) / (30 * 24 * 3600 * 1000);
-  const multiMode = allSeries.length > 1;
 
-  const seriesSVG = allSeries.map(({ mode: m, points: pts }) => {
+  const annotationsSVG = allSeries.map(({ mode: m, points: pts }) => {
     const color = modeColor(m);
     const ratings = pts.map((p) => p.rating);
     const dates = pts.map((p) => p.date.getTime());
-
-    const polyPoints = pts
-      .map(
-        (p) =>
-          `${toX(p.date.getTime()).toFixed(1)},${toY(p.rating).toFixed(1)}`,
-      )
-      .join(" ");
-    const firstX = toX(dates[0]).toFixed(1);
-    const lastX = toX(dates[dates.length - 1]).toFixed(1);
-    const areaPath = `M${firstX},${CHART_H} L${polyPoints.replace(/ /g, " L")} L${lastX},${CHART_H} Z`;
 
     const currentRating = ratings[ratings.length - 1];
     const peakRating = Math.max(...ratings);
@@ -133,14 +228,9 @@ export function renderChart(opts: {
     const delta = currentRating - ratings[0];
     const deltaStr = (delta >= 0 ? "+" : "") + delta;
     const deltaCol = delta >= 0 ? COLORS.win : COLORS.loss;
-    const strokeW = multiMode ? 1.8 : 2.2;
-    const areaOpacity = multiMode ? 0.06 : 0.2;
 
     return `
-    <!-- Series: ${m} -->
-    <path d="${areaPath}" fill="${color}" opacity="${areaOpacity}"/>
-    <polyline points="${polyPoints}" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linejoin="round" stroke-linecap="round"/>
-
+    <!-- Annotations: ${m} -->
     ${
       peakIdx !== ratings.length - 1 && !multiMode
         ? `<circle cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="3.5"
@@ -218,9 +308,6 @@ export function renderChart(opts: {
       <stop offset="0%"  stop-color="${COLORS.accent}" stop-opacity="0.15"/>
       <stop offset="70%" stop-color="${COLORS.accent}" stop-opacity="0"/>
     </linearGradient>
-    <clipPath id="chartClip">
-      <rect x="0" y="0" width="${CHART_W}" height="${CHART_H}"/>
-    </clipPath>
   </defs>
   
   ${renderHeader({ username, title, platform, country: "PT", themeName, width: W })}
@@ -249,10 +336,12 @@ export function renderChart(opts: {
   <line x1="0" y1="0" x2="0" y2="${CHART_H}" stroke="${COLORS.border}" stroke-width="1"/>
 
   <line x1="0" y1="${CHART_H}" x2="${CHART_W}" y2="${CHART_H}" stroke="${COLORS.border}" stroke-width="1"/>
-  
+
+  ${chartPaths}
+
   <g clip-path="url(#chartClip)">
-    ${seriesSVG.join("")}
-    </g>
+    ${annotationsSVG.join("")}
+  </g>
   </g>
 
   <line x1="${W - PAD.right + 10}" y1="${PAD.top}" x2="${W - PAD.right + 10}" y2="${H - PAD.bottom}" stroke="${COLORS.border}" stroke-width="1" opacity="0.6"/>

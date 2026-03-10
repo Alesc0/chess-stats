@@ -67,3 +67,17 @@ export const getIconByType: Record<ChessGameMode, (c: string) => string> = {
   rapid: RAPID_ICON,
   puzzle: PUZZLE_ICON,
 };
+
+export function sortedRatingRows(modes: MODE[], stats: Record<string, number>) {
+  return Object.entries(
+    modes.reduce(
+      (acc, mode) => {
+        acc[mode] = stats[mode] ?? 0;
+        return acc;
+      },
+      {} as Record<MODE, number>,
+    ),
+  )
+    .sort(([, a], [, b]) => b - a)
+    .map(([mode, value]) => ({ mode: mode as MODE, value }));
+}
