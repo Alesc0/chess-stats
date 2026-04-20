@@ -1,22 +1,11 @@
-// OpenTelemetry SDK initialization and tracing helpers
-
 import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
-import { logs } from "@opentelemetry/api-logs";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { resourceFromAttributes } from "@opentelemetry/resources";
+import type { Express } from "express";
+
 import {
-  BatchLogRecordProcessor,
-  LoggerProvider,
-} from "@opentelemetry/sdk-logs";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
+  init as initHyperDX,
+  setupExpressErrorHandler as attachExpressErrorHandler,
+  shutdown as shutdownHyperDX,
+} from "@hyperdx/node-opentelemetry";
 
 export interface TelemetryConfig {
   serviceName: string;
@@ -26,82 +15,75 @@ export interface TelemetryConfig {
   enabled: boolean;
 }
 
-let sdk: NodeSDK | null = null;
-let logProvider: LoggerProvider | null = null;
+let telemetryEnabled = false;
 
 const TRACER_NAME = "chess-stats";
 
-export function initializeTelemetry(config: TelemetryConfig): NodeSDK | null {
+function hasTelemetryAuthConfigured(): boolean {
+  return Boolean(
+    process.env.HYPERDX_API_KEY?.trim() ||
+      process.env.OTEL_EXPORTER_OTLP_HEADERS?.trim(),
+  );
+}
+
+export async function initializeTelemetry(
+  config: TelemetryConfig,
+): Promise<boolean> {
   if (!config.enabled) {
     console.log("OpenTelemetry is disabled");
-    return null;
+    return false;
+  }
+
+  if (!hasTelemetryAuthConfigured()) {
+    console.warn(
+      "OpenTelemetry auth is not configured. Set HYPERDX_API_KEY or OTEL_EXPORTER_OTLP_HEADERS.",
+    );
+    telemetryEnabled = false;
+    return false;
   }
 
   try {
-    const resource = resourceFromAttributes({
-      [ATTR_SERVICE_NAME]: config.serviceName,
-      [ATTR_SERVICE_VERSION]: config.serviceVersion,
-      "deployment.environment": config.environment,
-      "telemetry.sdk.runtime": "bun",
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??= config.otlpEndpoint;
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??=
+      `${config.otlpEndpoint.replace(/\/$/, "")}/v1/traces`;
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ??=
+      `${config.otlpEndpoint.replace(/\/$/, "")}/v1/metrics`;
+    process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ??=
+      `${config.otlpEndpoint.replace(/\/$/, "")}/v1/logs`;
+
+    initHyperDX({
+      service: config.serviceName,
+      consoleCapture: false,
+      stopOnTerminationSignals: false,
+      additionalInstrumentations: [],
+      additionalResourceAttributes: {
+        "deployment.environment": config.environment,
+        "service.version": config.serviceVersion,
+      },
     });
-
-    const traceExporter = new OTLPTraceExporter({
-      url: `${config.otlpEndpoint}/v1/traces`,
-      timeoutMillis: 5000,
-    });
-
-    const metricExporter = new OTLPMetricExporter({
-      url: `${config.otlpEndpoint}/v1/metrics`,
-      timeoutMillis: 5000,
-    });
-
-    const logExporter = new OTLPLogExporter({
-      url: `${config.otlpEndpoint}/v1/logs`,
-      timeoutMillis: 5000,
-    });
-
-    const logRecordProcessor = new BatchLogRecordProcessor(logExporter);
-
-    logProvider = new LoggerProvider({
-      resource,
-      processors: [logRecordProcessor],
-    });
-    logs.setGlobalLoggerProvider(logProvider);
-
-    sdk = new NodeSDK({
-      resource,
-      traceExporter,
-      logRecordProcessors: [logRecordProcessor],
-      metricReader: new PeriodicExportingMetricReader({
-        exporter: metricExporter,
-        exportIntervalMillis: 60_000,
-        exportTimeoutMillis: 30_000,
-      }),
-      instrumentations: [
-        getNodeAutoInstrumentations({
-          "@opentelemetry/instrumentation-fs": { enabled: false },
-          "@opentelemetry/instrumentation-http": {
-            enabled: true,
-            ignoreIncomingRequestHook: (req) => req.url === "/health",
-          },
-          "@opentelemetry/instrumentation-express": { enabled: true },
-        }),
-      ],
-    });
-
-    sdk.start();
+    telemetryEnabled = true;
     console.log("OpenTelemetry initialized successfully");
-    return sdk;
+    return true;
   } catch (error) {
     console.error("Failed to initialize OpenTelemetry:", error);
-    return null;
+    telemetryEnabled = false;
+    return false;
   }
+}
+
+export function setupExpressErrorHandler(app: Express): void {
+  if (!telemetryEnabled) {
+    return;
+  }
+
+  attachExpressErrorHandler(app);
 }
 
 export async function shutdownTelemetry(): Promise<void> {
   try {
-    if (logProvider) await logProvider.shutdown();
-    if (sdk) await sdk.shutdown();
+    if (telemetryEnabled) {
+      await shutdownHyperDX();
+    }
     console.log("OpenTelemetry shutdown successfully");
   } catch (error) {
     console.error("Error shutting down OpenTelemetry:", error);

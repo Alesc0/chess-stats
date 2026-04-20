@@ -41,7 +41,9 @@ node dist/src/index.js
 | `DEFAULT_THEME`                | `dark`                  | Theme applied to all endpoints when `?theme=` is not specified |
 | `OTEL_ENABLED`                 | `false`                 | Enable OpenTelemetry instrumentation                           |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | `http://localhost:4318` | OTLP endpoint for traces and metrics                           |
+| `OTEL_EXPORTER_OTLP_HEADERS`   | unset                   | Optional OTLP auth headers as comma-separated `key=value` pairs |
 | `OTEL_SERVICE_NAME`            | `chess-stats`           | Service name for OpenTelemetry                                 |
+| `HYPERDX_API_KEY`              | unset                   | Optional ClickStack / HyperDX ingestion key                    |
 | `OTEL_ENVIRONMENT`             | `development`           | Environment name for OpenTelemetry                             |
 
 Run with Bun (recommended) or set env vars before running the built Node app:
@@ -58,10 +60,17 @@ OpenTelemetry provides distributed tracing and metrics for monitoring your chess
 
 1. Set `OTEL_ENABLED=true` or configure `OTEL_EXPORTER_OTLP_ENDPOINT`
 2. Point to your OTLP-compatible backend (Jaeger, Tempo, Grafana, etc.)
+3. If your collector requires auth, set either `HYPERDX_API_KEY` or `OTEL_EXPORTER_OTLP_HEADERS`
 
 ```bash
 # Example with Jaeger locally
 OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 bun src/index.ts
+
+# Example with OTLP auth headers
+OTEL_ENABLED=true \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=my-ingestion-key \
+bun src/index.ts
 ```
 
 The service will automatically instrument HTTP requests, external fetch calls, and Express routes.

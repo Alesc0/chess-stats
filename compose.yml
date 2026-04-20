@@ -1,0 +1,21 @@
+services:
+  chess-stats:
+    image: ghcr.io/alesc0/chess-stats:latest
+    container_name: chess-stats
+    restart: unless-stopped
+    ports:
+      - ${IP}:${PORT}:3000
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT}
+      DEFAULT_THEME: dark
+      LOG_LEVEL: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME}
+    networks:
+      - clickstack
+
+networks:
+  clickstack:
+    external: true
+    name: clickstack_internal

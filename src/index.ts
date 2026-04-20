@@ -9,13 +9,13 @@ import {
 } from "./config";
 import {
   initializeTelemetry,
+  setupExpressErrorHandler,
   setupShutdownHandlers,
 } from "./services/telemetry.service";
-import logger from "./logger";
 
 // Initialize OpenTelemetry before importing the app
 // This ensures all instrumentation is properly set up
-initializeTelemetry({
+await initializeTelemetry({
   serviceName: OTEL_SERVICE_NAME,
   serviceVersion: version,
   otlpEndpoint: OTEL_EXPORTER_OTLP_ENDPOINT,
@@ -26,8 +26,13 @@ initializeTelemetry({
 // Setup graceful shutdown handlers
 setupShutdownHandlers();
 
-// Import app after telemetry is initialized
-import app from "./app";
+// Import app and logger after telemetry is initialized so auto-instrumentation can patch them.
+const [{ default: app }, { default: logger }] = await Promise.all([
+  import("./app"),
+  import("./logger"),
+]);
+
+setupExpressErrorHandler(app);
 
 app.listen(PORT, () => {
   logger.info(
